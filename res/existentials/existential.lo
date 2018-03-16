@@ -1,0 +1,13 @@
+let <alpha_x . x> = toss in
+let <alpha_y . y> = toss in
+let <alpha_z . z> = toss in
+let <alpha_w . w> = <alpha_y as alpha . y : flip@(alpha)> in
+let (result, ignore) = mux affine (use(x), z, w) in
+let x = reveal(result) in
+let <alpha_foo . foo> = toss in
+let <alpha_bar . bar> = toss in
+let p = <alpha_foo, alpha_bar as alpha_1, alpha_2 . (foo, bar) : flip@(alpha_1) * flip@(alpha_2)> in
+let <alpha_idk1 . idk1> = toss in
+let <alpha_idk2 . idk2> = toss in
+let <alpha_idk3 . idk3> = toss in
+<alpha_idk2 \/ alpha_idk3 as alpha . let (result, ignore) = mux affine (use(idk1), idk2, idk3) in result : flip@(alpha)>

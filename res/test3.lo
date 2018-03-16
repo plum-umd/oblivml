@@ -1,0 +1,5 @@
+let size = 5 public in
+let default_value = 42 secret in
+
+let default_bucket = (default_value, -1 secret) in
+(default_bucket, array(size)[fun ignore -> default_bucket])

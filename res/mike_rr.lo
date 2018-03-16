@@ -1,0 +1,35 @@
+(* notes:
+  - level is still the index into the array, so it jumps by twos *)
+
+let rnd0 (ignore : unit) = toss secret 0 in
+
+let rnd1 (ignore : unit) = toss secret 1 in
+
+type oram R0 R1 = (noram R0 R1 array) * (noram R1 R0 array) * trivial_oram R0 R1 in
+
+(* Accesses first element of pair *)
+let rec tree_rr_recR0 (oram : oram R0 R1) (idx : secret int) (* idx region is bot *) (level : public int) : data =
+  let (norams, tr_oram) = oram in
+  let levels = length(norams) in
+  if level = levels then (* TODO: Should be >= *)
+    let { isdummy -> ignore, idx -> ignore, data -> ret } = rr_trivial @ tr_oram @ idx @ (dummy_to_block @ ()) in
+    ret
+  else
+    let (r0, r1) (* R1 *) = tree_rr_recR1 @ oram @ idx @ level (* not +1 *) in (* TODO: idx should be idx / 2 *)
+    let (r0_new, tag) = mux linear (idx = (int_to_region0 @ 0 secret), rnd1 @ (), r0) in
+    let (r1_new, tag) = mux linear (idx = (int_to_region0 @ 0 secret), tag, r1) in
+    let _ = tree_add_recR1 @ oram @ idx @ level @ (r0_new, r1_new) in (* TODO: idx should be idx / 2 *)
+    let (noram,_) = norams[level] in
+    rr @ noram @ idx (* casts up to R0 *) @ reveal(tag)
+
+(* Accesses second element of pair *)
+(* Note: you could inline this call in the first call, potentially *)
+and tree_rr_recR1 (oram : oram R0 R1) (idx : secret int) (* index region is bot *) (level : public int) : data =
+  let (norams, tr_oram) = oram in
+  (* don't need to check levels; won't get here unless that check fails *)
+  let (r0, r1) (* R0 *) = tree_rr_recR0 @ oram @ idx @ (level + 1 public) in (* TODO: idx should be idx / 2 *) 
+  let (r0_new, tag) = mux linear (idx = (int_to_region0 @ 0 secret), rnd0 @ (), r0) in
+  let (r1_new, tag) = mux linear (idx = (int_to_region0 @ 0 secret), tag, r1) in
+  let _ = tree_add_recR1 @ oram @ idx @ (level + 1 public) @ (r0_new, r1_new) in (* TODO: idx should be idx / 2 *)
+  let (_,noram) = norams[level] in
+  rr @ norams[level] @ idx (* casts up to R1 *) @ reveal(tag)

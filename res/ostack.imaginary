@@ -1,0 +1,71 @@
+type idx = int
+type pos = rnd (* type of uniform random ints ? *)
+
+type 'a block  =
+  { isdummy : bool,
+    addr    : idx,
+    data    : 'a
+  }
+
+type 'a bucket = ('a block) array
+
+let rr_bucket (bucket : 'a bucket) (addr : idx) (initial : 'a block) : 'a block =
+  let bucket_size = length(bucket) in
+  let rr_bucket' (block_idx : int) (acc : 'a block) : 'a block =
+    if block_idx = bucket_size then
+      acc
+    else
+      let { isdummy = blk_isdummy, addr = blk_addr, data = blk_data } = bucket[block_idx] <- (dummy_block ()) in
+      let found = blk_isdummy && blk_addr = addr in
+      let (blk_data', acc') = mux universal (found, acc, blk_data) in
+      let (blk_isdummy', _) = mux universal (found, false, blk_isdummy) in
+      let _ = bucket[block_idx] <- { isdummy = blk_isdummy', addr = blk_addr, data = blk_data' } in
+      rr_bucket' (block_idx + 1) acc'
+  in
+  rr_bucket' 0 initial
+
+type 'a noram  = ('a bucket) array
+
+let rr (noram : 'a noram) (addr : idx) (tag : pos) : 'a =
+  let rec rr' (level : int) (acc : 'a block) : 'a block =
+    let base = 2^level - 1 in
+    if base = length(noram) + 1 then
+      acc
+    else
+      let bucket_idx = base + (tag & base) in
+      let bucket = noram[bucket_idx] in
+      let acc' = rr_bucket bucket addr acc in
+      rr' (level + 1) acc'
+  in
+  rr' 0 (dummy_block ())
+
+type 'a ostack =
+  { store  : ('a * pos) noram,
+    addr_r : idx ref,
+    tag_r  : pos rer
+  }
+
+let stackop (stk : 'a ostack) (ispush : bool) (data : 'a) : 'a =
+  let { store = store, addr_r = addr_r, tag_r = tag_r } = stk in
+  let addr = !addr_r in
+  let tag  = !tag_r in
+
+  let (rr_addr, _) = mux universal (ispush, -1, addr) in
+  let (rr_tag, _) = mux universal (ispush, reveal(rnd ()), reveal(tag)) in
+  let (data', rr_tag) = rr store rr_addr rr_tag in
+
+  let (tag', _) = mux affine (ispush, rnd (), rr_tag) in
+
+  let (add_addr, _) = mux universal (ispush, addr + 1, -1) in
+  let (add_tag, _) = mux universal (ispush, use(tag'), 0) in
+  let (add_blk_tag, _) = mux affine (ispush, tag, rnd ()) in
+  let add_blk = (data, add_blk_tag) in
+
+  let _ = add store add_addr add_tag add_blk in
+
+  let (addr', _) = mux universal (ispush, addr + 1, addr - 1) in
+
+  addr_r := addr';
+  tag_r := tag';
+
+  data'

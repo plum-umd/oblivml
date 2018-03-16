@@ -1,0 +1,3 @@
+* implement log_2 in ostack.lo
+* figure out why stackop is doing log_2 capacity, when capacity is already log_2 of size.
+  replace in impl for stackop.

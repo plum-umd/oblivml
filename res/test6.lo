@@ -1,0 +1,29 @@
+let init (size : public int) (default_value : unit -> secret int) =
+  let default_bucket (ignore : unit) = (default_value @ (), -1 secret) in
+  (default_bucket, array(size)[fun ignore -> default_bucket @ ()])
+in
+
+let read_and_remove (oram : (unit -> (secret int * secret int)) * ((secret int * secret int) array)) (addr : secret int) =
+  let (default_bucket, mem) = oram in
+  let len = length(mem) in
+  let rec iterate (curr_idx : public int) (acc_bucket : (secret int * secret int)) : secret int =
+    if curr_idx = len then
+      let (ret, ignore) = acc_bucket in ret
+    else
+      let (cand, curr_addr) = mem[curr_idx] <- default_bucket @ () in
+      let (a, b) = acc_bucket in
+      let (l1, r1) = mux universal (addr = curr_addr, cand, a) in
+      let (l2, r2) = mux universal (addr = curr_addr, curr_addr, b) in
+      let left = (l1, l2) in
+      let right = (r1, r2) in
+      let _ = mem[curr_idx] <- right in
+      iterate @ (curr_idx + 1 public) @ left
+  in
+  iterate @ 0 public @ (default_bucket @ ())
+in
+
+let dfval (ignore : unit) =
+  42 secret
+in
+
+read_and_remove @ (init @ 5 public @ dfval) @ 0 secret
