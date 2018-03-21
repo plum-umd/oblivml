@@ -1,5 +1,12 @@
 module RExp = Rexp
 
+type base =
+  | TBInt
+  | TBBool
+  | TBRInt
+  | TBRBool
+  | TBUnit
+
 type t =
   | TUnit
   | TBit    of Label.t * RExp.t
@@ -25,9 +32,9 @@ let rec to_string t =
                                                               (List.map Region.to_string rs))
                                                (Constraints.to_string cs)
                                                (to_string t)
-  | TRecord fields     -> Printf.sprintf "{ %s }" (String.concat ", " 
-                                                                 (List.map (fun (field, t) -> 
-                                                                      Printf.sprintf "%s : %s" (Field.to_string field) (to_string t)) 
+  | TRecord fields     -> Printf.sprintf "{ %s }" (String.concat ", "
+                                                                 (List.map (fun (field, t) ->
+                                                                      Printf.sprintf "%s : %s" (Field.to_string field) (to_string t))
                                                                            (Field.Map.bindings fields)))
   | TArray t           -> Printf.sprintf "%s array" (to_string t)
   | TFun (t1, t2) -> Printf.sprintf "%s -> %s" (to_string t1) (to_string t2)
@@ -66,7 +73,7 @@ let rec free t =
   | TRecord fields -> Field.Map.fold (fun _ value acc -> Region.Set.union acc (free value)) fields Region.Set.empty
   | TArray ele_t -> free ele_t
   | TFun (t1, t2) -> Region.Set.union (free t1) (free t2)
-       
+
 let fresh x s t =
   let prefix = "interior" in
   let rec fresh' n =
@@ -109,7 +116,7 @@ and capture_avoid_sub y t x s =
     else
       let z = fresh x s t in
       (z, rsub1 (rsub1 t y (RExp.Var z)) x s)
- 
+
 let rsub t xs ss =
   List.fold_left2 rsub1 t xs ss
 
@@ -124,7 +131,7 @@ let rec refine t rs_set = t
   | TRecord fields -> TRecord (Field.Map.map (fun field_type -> refine field_type rs_set) fields)
   | TArray ele_t -> TArray (refine ele_t rs_set)
   | TFun (t1, t2) -> TFun (refine t1 rs_set, refine t2 rs_set)
-                         *) 
+                         *)
 let rec merge t1 t2 =
   match (t1, t2) with
   | (TUnit, TUnit) -> TUnit

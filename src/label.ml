@@ -11,7 +11,9 @@ module BaseSet = Set.Make(OrderedBase)
 
 type t     = BaseSet.t
 let bottom = BaseSet.empty
+let public = bottom
 let top = BaseSet.singleton (Label 1)
+let secret = top
 
 let to_string l = if BaseSet.equal l bottom then "public" else "secret"
 let order l1 l2 = BaseSet.subset l1 l2

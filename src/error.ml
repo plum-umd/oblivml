@@ -1,3 +1,7 @@
+(* Impossible Errors *)
+
+exception Impossible
+
 (* Syntax Errors *)
 open Lexing
 

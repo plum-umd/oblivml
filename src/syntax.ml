@@ -1,4 +1,5 @@
-open Bit
+open Base
+(* open Bit
 
 module RExp = Rexp
 
@@ -42,7 +43,27 @@ let pattern_to_string p =
         ^ (match ret with
             | None -> ""
             | Some ret_t -> Printf.sprintf " : %s" (Type.to_string ret_t))
+ *)
 
+type section =
+  { sect_start : Lexing.position
+  ; sect_end   : Lexing.position
+  }
+
+type oblivml =
+  { loc  : section option
+  ; node : oblivml'
+  }
+
+and oblivml' =
+  | EUnit
+  | EBool of { value : Bool.t
+             ; label : Label.t
+             }
+  | EVar  of { name  : Var.t
+             }
+
+(*
 type expr =
   | EVar        of Var.t
   | EUnit
@@ -113,3 +134,4 @@ let rec expr_to_string e =
                                      (Type.to_string t)
     | EApp       (e1, e2)        -> Printf.sprintf "%s %s" (expr_to_string e1) (expr_to_string e2)
     | EIf        (e1, e2, e3)    -> Printf.sprintf "if %s then %s else %s" (expr_to_string e1) (expr_to_string e2) (expr_to_string e3)
+ *)

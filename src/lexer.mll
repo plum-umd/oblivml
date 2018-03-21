@@ -2,105 +2,174 @@
   open Lexing
   open Parser
   open Syntax
+  open Error
 
-  let bit_arg s =
-    match s with
-      | "O" -> Bit.O
-      | "I" -> Bit.I
-      | _   -> failwith "Impossible"
+  let extract_intconst s = int_of_string s
 
-  let kind_arg s =
+  let extract_boolconst s =
     match s with
-      | "universal" -> Kind.U
-      | "affine"    -> Kind.A
-      | _           -> failwith "Impossible"
+      | "true"  -> true
+      | "false" -> false
+      | _       -> raise Impossible (* forbidden by lexer *)
 
-  let label_arg s =
+  let extract_label s =
     match s with
-      | "public" -> Label.bottom
-      | "secret" -> Label.BaseSet.singleton (Label.Label 1)
-      | _        -> failwith "Impossible"
+      | "public" -> Label.public
+      | "secret" -> Label.secret
+      | _        -> raise Impossible (* forbidden by lexer *)
+
+  let extract_type s =
+    match s with
+      | "int"   -> Type.TBInt
+      | "bool"  -> Type.TBBool
+      | "rint"  -> Type.TBRInt
+      | "rbool" -> Type.TBRBool
+      | "unit"  -> Type.TBUnit
+      | _       -> raise Impossible (* forbidden by lexer *)
+
+  let extract_kind s =
+    match s with
+      | "affine"    -> Kind.Affine
+      | "universal" -> Kind.Universal
+      | _           -> raise Impossible (* forbidden by lexer *)
 }
-
-(* Some handy regexps *)
 
 let whitespace = [' ' '\t' ]
 let newline    = ('\n' | '\r' '\n')
-let linecomment = '/' '/' [^'\n']*
 
 let alpha      = ['a'-'z' 'A'-'Z']
-let num        = '-'? ['0'-'9']+
-let endident   = (alpha | num | ['_' '$' '''])*
-let ident      = alpha+ endident
+let digit      = ['0'-'9']
 
-let bit        = ('O' | 'I')
-let kind       = ("universal" | "affine")
-let labeled_typ = ("bit" | "int")
+(** Value Identifiers --
+      Any sequences of letters, decimal digits,
+      primes ('), or underbars (_) starting with a letter *)
+let vid        = alpha (alpha | digit | [''' '_'])*
+
+(** Integer Constants --
+      An optional negation symbol (-), followed by
+      a non-empty sequence of decimal digits. *)
+let intconst   = '-'? digit+
+
+(** Boolean Constants --
+      Either the literal 'true' or 'false'. *)
+let boolconst  = ("true" | "false")
+
+(** Labels --
+      Either the literal 'public' or 'secret'. *)
 let label      = ("public" | "secret")
 
+(** Kinds --
+      Either the literal 'affine' or 'universal'. *)
+let kind       = ("affine" | "universal")
 
-(* Token generators and rules *)
+(** Base Types --
+      The literals 'int', 'bool', 'rint', 'rbool', or 'unit'. *)
+let type       = ("int" | "bool" | "rint" | "rbool" | "unit")
 
+(** Tokenizing OblivML *)
 rule token = parse
-| whitespace  { token lexbuf }                    (* we ignore whitespace *)
-| newline     { new_line lexbuf; token lexbuf }   (* we update lexer and ignore the newline *)
-| "if"        { TIF }
-| "then"      { TTHEN }
-| "else"      { TELSE }
-| "let"       { TLET }
-| "and"       { TAND }
-| "rec"       { TREC }
-| "="         { TEQ }
-| ":"         { TCOLON }
-| "!"         { TBANG }
-| "&&"        { TBAND }
-| "&"         { TTAND }
-| "in"        { TIN }
-| "{"         { TCLPAR }
-| "->"        { TRARROW }
-| ","         { TCOMMA }
-| "."         { TDOT }
-| "}"         { TCRPAR }
-| "("         { TLPAR }
-| ")"         { TRPAR }
-| "mux"       { TMUX }
-| "reveal"    { TREVEAL }
-| "use"       { TUSE }
-| "toss"      { TTOSS }
-| "["         { TSLPAR }
-| "]"         { TSRPAR }
-| "<-"        { TLARROW }
-| "array"     { TARRAY }
-| "exists"    { TEXISTS }
-| "length"    { TLENGTH }
-| "fun"       { TFUN }
-| "type"      { TTYPE }
-| "*"         { TSTAR }
-| "+"         { TPLUS }
-| "@"         { TAT }
-| "_"         { TWILD }
-| bit         { TLBIT (bit_arg (lexeme lexbuf)) }
-| kind        { TKIND (kind_arg (lexeme lexbuf)) }
-| "unit"      { TTUNIT }
-| "bit"       { TBIT }
-| "int"       { TINT }
-| "flip"      { TTFLIP }
-| label       { TLABEL (label_arg (lexeme lexbuf)) }
-| num         { TLINT (int_of_string (lexeme lexbuf)) }
-| "<"         { TLSQ }
-| ">"         { TRSQ }
-| "as"        { TAS }
-| "_|_"       { TBOTTOM }
-| "_||_"      { TINDEP }
-| "\\/"       { TJOIN }
-| ident       { TIDENT (lexeme lexbuf) }
-| eof         { TEOF }
-| "(*"        { comment (lexeme_start_p lexbuf) lexbuf; token lexbuf }
-| "*)"        { raise (Error.SyntaxError (lexeme_start_p lexbuf, "Comment not started")) }
+(** Whitespace -- ignored *)
+  | whitespace  { token lexbuf }                    (* we ignore whitespace *)
+
+(** Newlines -- update location, then ignored *)
+  | newline     { new_line lexbuf; token lexbuf }   (* we update lexer and ignore the newline *)
+
+(** Variable Binding *)
+  | "let"       { TLET }
+  | "rec"       { TREC }
+  | "in"        { TIN }
+  | "="         { TEQ }
+  | "and"       { TAND }
+
+(** Conditionals *)
+  | "if"        { TIF }
+  | "then"      { TTHEN }
+  | "else"      { TELSE }
+
+(** Muxes *)
+  | "mux"       { TMUX }
+
+(** Random to Base *)
+  | "use"       { TUSE }
+  | "reveal"    { TREVEAL }
+
+(** Integer Operators *)
+  | "+"         { TPLUS }
+  | "*"         { TSTAR }
+
+(** Boolean Operators *)
+  | "&&"        { TBAND }
+  | "||"        { TBOR }
+  | "not"       { TBNOT }
+
+(** Bitwise Operators *)
+  | "&"         { TTAND }
+  | "|"         { TTOR }
+  | "~"         { TTNOT }
+
+(** Records *)
+  | "{"         { TCLPAR }
+  | ","         { TCOMMA }
+  | "}"         { TCRPAR }
+
+(** Functions *)
+  | "fun"       { TFUN }
+  | "->"        { TRARROW }
+
+(** Arrays *)
+  | "array"     { TARRAY }
+  | "["         { TSLPAR }
+  | "]"         { TSRPAR }
+  | "<-"        { TLARROW }
+  | "length"    { TLENGTH }
+
+(** Type Ascription *)
+  | "<"         { TALPAR }
+  | ">"         { TARPAR }
+  | ":"         { TCOLON }
+  | "("         { TLPAR }
+  | ")"         { TRPAR }
+
+(** Patterns *)
+  | "_"         { TWILD }
+
+(** Integer Constants *)
+  | intconst    { TLINT (extract_intconst (lexeme lexbuf)) }
+
+(** Boolean Constants *)
+  | boolconst   { TLBOOL (extract_boolconst (lexeme lexbuf)) }
+
+(** Labels *)
+  | label       { TLABEL (extract_label (lexeme lexbuf)) }
+
+(** Base Types *)
+  | type        { TTYPE (extract_type (lexeme lexbuf)) }
+
+(** Kinds *)
+  | kind        { TKIND (extract_kind (lexeme lexbuf)) }
+
+(** Random Integers *)
+  | "rnd"       { TRND }
+
+(** Random Boolean *)
+  | "flip"      { TFLIP }
+
+(** Value Identifiers *)
+  | vid         { TIDENT (lexeme lexbuf) }
+
+(** Comments *)
+  | "(*"        { comment (lexeme_start_p lexbuf) lexbuf; token lexbuf }
+  | "*)"        { raise (SyntaxError (lexeme_start_p lexbuf, "This comment terminator has no corresponding initiator.")) }
+
+(** EOF *)
+  | eof         { TEOF }
+
+(** Failure -- couldn't find a valid token *)
+  | _           { raise (SyntaxError (lexeme_start_p lexbuf, "Unexpected token.")) }
 
 and comment pos_inner = parse
-    | "(*"    { comment (lexeme_start_p lexbuf) lexbuf; comment pos_inner lexbuf }
-    | "*)"    { () }
-    | eof     { raise (Error.SyntaxError (pos_inner, "Comment not terminated")) }
-    | newline { new_line lexbuf; comment pos_inner lexbuf }
-    | _       { comment pos_inner lexbuf }
+  | "(*"    { comment (lexeme_start_p lexbuf) lexbuf; comment pos_inner lexbuf }
+  | "*)"    { () }
+  | eof     { raise (Error.SyntaxError (pos_inner, "This comment initiator has no corresponding terminator.")) }
+  | newline { new_line lexbuf; comment pos_inner lexbuf }
+  | _       { comment pos_inner lexbuf }

@@ -1,29 +1,31 @@
-type t     = U | A
-let bottom = A
-let top    = U
+type t     =
+  | Affine
+  | Universal
+let bottom = Affine
+let top    = Universal
 
 let to_string k =
   match k with
-    | U -> "universal"
-    | A -> "affine"
+    | Universal -> "universal"
+    | Affine -> "affine"
 
-let order k1 k2 = 
+let order k1 k2 =
   match (k1, k2) with
-    | (A, A) -> true
-    | (A, U) -> true
-    | (U, A) -> false
-    | (U, U) -> true
+    | (Affine, Affine) -> true
+    | (Affine, Universal) -> true
+    | (Universal, Affine) -> false
+    | (Universal, Universal) -> true
 
-let join k1 k2 = 
+let join k1 k2 =
   match (k1, k2) with
-    | (A, A) -> A
-    | (A, U) -> U
-    | (U, A) -> U
-    | (U, U) -> U
+    | (Affine, Affine) -> Affine
+    | (Affine, Universal) -> Universal
+    | (Universal, Affine) -> Universal
+    | (Universal, Universal) -> Universal
 
 let meet k1 k2 =
   match (k1, k2) with
-    | (A, A) -> A
-    | (A, U) -> A
-    | (U, A) -> A
-    | (U, U) -> U
+    | (Affine, Affine) -> Affine
+    | (Affine, Universal) -> Affine
+    | (Universal, Affine) -> Affine
+    | (Universal, Universal) -> Universal
