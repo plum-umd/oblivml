@@ -1,3 +1,8 @@
 I found a resource that potentially fixes my issue with parsing function application:
 
 https://stackoverflow.com/questions/27630269/parsing-function-application-with-happy
+
+TODO
+----
+
+* add a single 'literal' expression, rather than having an expression for each literal

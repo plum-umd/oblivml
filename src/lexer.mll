@@ -74,67 +74,132 @@ rule token = parse
 (** Newlines -- update location, then ignored *)
   | newline     { new_line lexbuf; token lexbuf }   (* we update lexer and ignore the newline *)
 
-(** Variable Binding *)
+(** Variable Binding
+
++ Basic: `let p1 = e2 in e3`
++ Recursive: `let rec p1 = e2 in e3`
++ Mutually Recursive: `let rec p1 = e2 and p3 = e4 in e5`
+*)
   | "let"       { TLET }
   | "rec"       { TREC }
   | "in"        { TIN }
   | "="         { TEQ }
   | "and"       { TAND }
 
-(** Conditionals *)
+(** Conditionals
+
++ Basic: `if e1 then e2 else e3`
+*)
   | "if"        { TIF }
   | "then"      { TTHEN }
   | "else"      { TELSE }
 
-(** Muxes *)
-  | "mux"       { TMUX }
+(** Muxes
 
-(** Random to Base *)
++ Basic: `mux (e1, e1, e2)`
+*)
+  | "mux"       { TMUX }
+  | "("         { TLPAR }
+  | ")"         { TRPAR }
+
+(** Convert Random Value
+
++ Secretly: `use(x)`
++ Publicly: `reveal(x)`
+*)
   | "use"       { TUSE }
   | "reveal"    { TREVEAL }
 
-(** Integer Operators *)
+(** Integer Constants *)
+  | intconst    { TLIT (Literal.LitInt (extract_intconst (lexeme lexbuf))) }
+
+(** Integer Operators
+
++ Addition: `e1 + e2`
++ Subtractiont: `e1 - e2`
++ Multiplication: `e1 * e2`
+*)
   | "+"         { TPLUS }
+  | "-"         { TMINUS }
   | "*"         { TSTAR }
 
-(** Boolean Operators *)
+(** Boolean Operators
+
++ Conjunction: `e1 && e2`
++ Disjunction: `e1 || e2`
++ Negation: `not e`
+*)
   | "&&"        { TBAND }
   | "||"        { TBOR }
   | "not"       { TBNOT }
 
-(** Bitwise Operators *)
+(** Bitwise Operators
+
++ AND: `e1 & e1`
++ OR: `e1 | e2`
++ NOT: `~ e`
+*)
   | "&"         { TTAND }
   | "|"         { TTOR }
   | "~"         { TTNOT }
 
-(** Records *)
-  | "{"         { TCLPAR }
-  | ","         { TCOMMA }
-  | "}"         { TCRPAR }
+(** Records
 
-(** Functions *)
++ Literals: `{ l1 = e1; l2 = e2; l3 = e3 }`
++ Patterns: `{ l1 = p1; l2 = p2; l3 = p3 }`
++ Access: `r1.f1`
+*)
+  | "{"         { TCLPAR }
+  | ";"         { TSEMI }
+  | "}"         { TCRPAR }
+  | "."         { TDOT }
+
+(** Functions
+
++ Literals: `fun p1 p2 -> e`
+(* TODO(ins): recursive literals? `fun foo . p1 p2 -> e` *)
+*)
   | "fun"       { TFUN }
   | "->"        { TRARROW }
 
-(** Arrays *)
+(** Arrays
+
++ Creation: `array(e1)[fun x -> e2]`
++ Read: `e1[e2]`
++ Write: `e1[e2] <- e3`
++ Length: `length(e)`
+*)
   | "array"     { TARRAY }
   | "["         { TSLPAR }
   | "]"         { TSRPAR }
   | "<-"        { TLARROW }
   | "length"    { TLENGTH }
 
-(** Type Ascription *)
-  | "<"         { TALPAR }
-  | ">"         { TARPAR }
-  | ":"         { TCOLON }
-  | "("         { TLPAR }
-  | ")"         { TRPAR }
+(** Type Ascription
 
-(** Patterns *)
++ Basic: `(e1 : t1)`
+*)
+  | ":"         { TCOLON }
+
+(** Type Construction
+
++ Base Types: `bt<l1, r1>`
+*)
+  | "<"         { TALPAR }
+  | ","         { TCOMMA }
+  | ">"         { TARPAR }
+
+(** Patterns
+
++ Wildcard: `_`
+*)
   | "_"         { TWILD }
 
-(** Integer Constants *)
-  | intconst    { TLINT (extract_intconst (lexeme lexbuf)) }
+(** Type Aliasing
+
++ Basic: `type x = t`
+*)
+  | "type"      { TTYPE }
 
 (** Boolean Constants *)
   | boolconst   { TLBOOL (extract_boolconst (lexeme lexbuf)) }
@@ -142,8 +207,11 @@ rule token = parse
 (** Labels *)
   | label       { TLABEL (extract_label (lexeme lexbuf)) }
 
+(** Regions *)
+  | region      { TREGION (extract_region (lexeme lexbuf)) }
+
 (** Base Types *)
-  | type        { TTYPE (extract_type (lexeme lexbuf)) }
+  | type        { TBTYPE (extract_type (lexeme lexbuf)) }
 
 (** Kinds *)
   | kind        { TKIND (extract_kind (lexeme lexbuf)) }
@@ -170,6 +238,6 @@ rule token = parse
 and comment pos_inner = parse
   | "(*"    { comment (lexeme_start_p lexbuf) lexbuf; comment pos_inner lexbuf }
   | "*)"    { () }
-  | eof     { raise (Error.SyntaxError (pos_inner, "This comment initiator has no corresponding terminator.")) }
+  | eof     { raise (SyntaxError (pos_inner, "This comment initiator has no corresponding terminator.")) }
   | newline { new_line lexbuf; comment pos_inner lexbuf }
   | _       { comment pos_inner lexbuf }

@@ -9,18 +9,21 @@ let rec div_2 (n : int<public, _|_>) : int<public, _|_> =
     0<public, _|_>
   else
     div_2 (n - 2<public, _|_>) + 1<public, _|_>
+in
 
 let rec log_2 (n : int<public, _|_>) : int<public, _|_> =
   if n = 1<public, _|_> then
     0<public, _|_>
   else
     log_2 (div_2 n) + 1<public, _|_>
+in
 
 let rec pow_2 (n : int<public, _|_>) : int<public, _|_> =
   if n = 0<public, _|_> then
     1<public, _|_>
   else
     2<public, _|_> * (pow_2 (n + 1<public, _|_>))
+in
 
 (***********************
  ** Type Declarations **
@@ -28,6 +31,7 @@ let rec pow_2 (n : int<public, _|_>) : int<public, _|_> =
 
 (** Data user is storing *)
 type user_data = int<secret, 0>
+in
 
 (** Data the OStack is storing *)
 type ostack_data =
@@ -35,6 +39,7 @@ type ostack_data =
   ; ostack_tag : rint<secret, 0>
   ; ostack_val : user_data
   }
+in
 
 (** Data the NRORAM is storing *)
 type nr_data =
@@ -42,6 +47,7 @@ type nr_data =
   ; nr_tag  : int<secret, 0>
   ; nr_val  : ostack_data
   }
+in
 
 (** Blocks in the trivial ORAM *)
 type block =
@@ -49,16 +55,20 @@ type block =
   ; idx     : int<secret, 0>
   ; data    : nr_data
   }
+in
 
 type trivial_oram = block array
+in
 
 type nr_oram = trivial_oram array
+in
 
 type ostack =
   { oram  : nr_oram
   ; idx_r : int<secret, 0> array
   ; tag_r : rint<secret, 0> array
   }
+in
 
 (********************
  ** Default Values **
@@ -66,24 +76,28 @@ type ostack =
 
 let default_user_data =
   0<secret, 0>
+in
 
 let default_ostack_data =
   { is_some    = false<secret, 0>
   ; ostack_tag = rnd<secret, 0>
   ; ostack_val = default_user_data
   }
+in
 
 let default_nr_data =
   { is_some = false<secret, 0>
   ; nr_tag  = 0<secret, 0>
   ; nr_val  = default_ostack_data
   }
+in
 
 let default_block =
   { is_some = false<secret, 0>
   ; idx     = 0<secret, 0>
   ; data    = default_nr_data
   }
+in
 
 (******************
  ** Trivial ORAM **
@@ -91,6 +105,7 @@ let default_block =
 
 let trivial_init (size : int<public, _|_>) : trivial_oram =
   array(size)[fun _ -> default_block]
+in
 
 let trivial_rr' (toram : trivial_oram) (idx : int<secret, 0>) : block =
   let len = length(toram) in
@@ -105,10 +120,12 @@ let trivial_rr' (toram : trivial_oram) (idx : int<secret, 0>) : block =
       iterate (i + 1<public, _|_>) l
   in
   iterate 0<public, _|_> default_block
+in
 
 let trivial_rr (toram : trivial_oram) (idx : int<secret, 0>) : nr_data =
   let result = trivial_rr' toram idx in
   result.data
+in
 
 let trivial_add' (toram : trivial_oram) (blk : block) : unit<public, _|_> =
   let len = length(toram) in
@@ -123,12 +140,14 @@ let trivial_add' (toram : trivial_oram) (blk : block) : unit<public, _|_> =
       iterate (i + 1<public, _|_>) l
   in
   iterate 0<public, _|_> blk
+in
 
 let trivial_add (toram : trivial_oram) (idx : int<secret, 0>) (data : nr_data) : unit<public, _|_> =
   trivial_add' toram { is_some = true<secret, 0>
                      ; idx     = idx
                      ; data    = data
                      }
+in
 
 let trivial_pop' (toram : trivial_oram) : block =
   let len = length(toram) in
@@ -143,6 +162,7 @@ let trivial_pop' (toram : trivial_oram) : block =
       iterate (i + 1<public, _|_) l
   in
   iterate 0<public, _|_> default_block
+in
 
 (************************
  ** NON-RECURSIVE ORAM **
@@ -174,10 +194,12 @@ let nr_rr' (nroram : nr_oram) (idx : int<secret, 0>) (tag : int<public, _|_>) : 
       iterate (level + 1<public, _|_>) ret
   in
   iterate 0<public, _|_> default_nr_data
+in
 
 let nr_rr (nroram : nr_oram) (idx : int<secret, 0>) (tag : int<public, _|_>) : ostack_data =
   let ret = nr_rr' nroram idx tag in
   ret.nr_val
+in
 
 let nr_evict' (nroram : nr_oram) (level : int<public, _|_>) (loc : int<public, _|_>) : unit<public, _|_> =
   let mask = pow_2 level in
@@ -190,6 +212,7 @@ let nr_evict' (nroram : nr_oram) (level : int<public, _|_>) (loc : int<public, _
 
   trivial_add' nroram[(2<public, _|_> * loc) + 1<public, _|_>] l;
   trivial_add' nroram[(2<public, _|_> * loc) + 2<public, _|_>] r
+in
 
 let nr_evict (nroram : nr_oram) : unit<public, _|_> =
   let len = length(nroram) in
@@ -213,11 +236,13 @@ let nr_evict (nroram : nr_oram) : unit<public, _|_> =
       iterate (level + 1<public, _|_>)
   in
   iterate 0<public, _|_>
+in
 
 let nr_add' (nroram : nr_oram) (blk : block) : unit<public, _|_> =
   let bucket = nroram[0 public] in
   trivial_add' bucket blk;
   nr_evict nroram
+in
 
 let nr_add (nroram : nr_oram) (idx : int<secret, 0>) (tag : int<secret, 0>) (data : ostack_data) : unit<public, _|_> =
   nr_add' nroram { is_some = true<secret, 0>
@@ -227,6 +252,7 @@ let nr_add (nroram : nr_oram) (idx : int<secret, 0>) (tag : int<secret, 0>) (dat
                              ; nr_val  = data
                              }
                  }
+in
 
 (*************
  ** OSTACKS **
@@ -237,6 +263,7 @@ let ostack_init (size : int<public, _|_>) (bucket_size : int<public, _|_>) : ost
   ; idx_r = array(1<public, _|_>)[fun _ -> 0<secret, 0>]
   ; tag_r = array(1<public, _|_>)[fun _ -> rnd<secret, 0>]
   }
+in
 
 let stackop (ostack : ostack) (ispush : bool<secret, _|_>) (data : user_data) : user_data =
   let idx = ostack.idx_r[0<public, _|_>] in
@@ -268,6 +295,9 @@ let stackop (ostack : ostack) (ispush : bool<secret, _|_>) (data : user_data) : 
   ostack.tag_r[0<public, _|_>] <- tag';
 
   res.ostack_val
+in
+
+()
 
 (*
 
