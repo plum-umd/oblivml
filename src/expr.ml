@@ -64,7 +64,7 @@ and t' =
                  }
 
   (** Record *)
-  | ERecord   of { contents : t Record.t
+  | ERecord   of { contents : (Var.t * t) list
                  }
 
   (** Record Access *)

@@ -14,10 +14,15 @@ module Bin =
   struct
     module Op =
       struct
-        type t = unit
+        type t =
+          | Add
+          | Subtract
+          | Mult
+          | And
       end
     module Rel =
       struct
-        type t = unit
+        type t =
+          | Equal
       end
   end
