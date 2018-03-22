@@ -114,7 +114,7 @@ let trivial_rr' (toram : trivial_oram) (idx : int<secret, 0>) : block =
       acc
     else
       let curr = toram[i] <- default_block in
-      let swap = not acc.is_some and idx = curr.idx in
+      let swap = not acc.is_some && idx = curr.idx in
       let (l, r) = mux(swap, curr, acc) in
       toram[i] <- r;
       iterate (i + 1<public, _|_>) l
@@ -156,7 +156,7 @@ let trivial_pop' (toram : trivial_oram) : block =
       acc
     else
       let curr = toram[i] <- default_block in
-      let swap = not acc.is_some and curr.is_some in
+      let swap = not acc.is_some && curr.is_some in
       let (l, r) = mux(swap, curr, acc) in
       toram[i] <- r;
       iterate (i + 1<public, _|_) l
@@ -298,129 +298,3 @@ let stackop (ostack : ostack) (ispush : bool<secret, _|_>) (data : user_data) : 
 in
 
 ()
-
-(*
-
-let test_user_data1 =
-  fun ignore ->
-    100 secret
-in
-
-let test_user_data2 =
-  fun ignore ->
-    200 secret
-in
-
-let test_ostack_data1 =
-  fun ignore ->
-    { is_some    -> I secret,
-      ostack_pos -> rnd,
-      ostack_val -> test_user_data1 @ () }
-in
-
-let test_ostack_data2 =
-  fun ignore ->
-    { is_some    -> I secret,
-      ostack_pos -> rnd,
-      ostack_val -> test_user_data2 @ () }
-in
-
-let test_nr_data1 =
-  fun ignore ->
-    { is_some -> I secret,
-      nr_pos  -> 0 secret,
-      nr_val  -> test_ostack_data1 @ () }
-in
-
-let test_nr_data2 =
-  fun ignore ->
-    { is_some -> I secret,
-      nr_pos  -> 1 secret,
-      nr_val  -> test_ostack_data2 @ () }
-in
-
-let basic_trivial_test =
-  fun ignore ->
-    let toram = trivial_init @ (2 public) in
-    let _ = trivial_add @ toram @ (0 secret) @ (test_nr_data1 @ ()) in
-    let _ = trivial_add @ toram @ (1 secret) @ (test_nr_data2 @ ()) in
-    trivial_rr @ toram @ (1 secret)
-in
-
-let basic_nr_test =
-  fun ignore ->
-    let nroram = nr_init @ (3 public) @ (2 public) in
-    let _ = nr_add @ nroram @ (0 secret) @ (0 secret) @ (test_ostack_data1 @ ()) in
-    let _ = nr_add @ nroram @ (1 secret) @ (1 secret) @ (test_ostack_data2 @ ()) in
-    nr_rr @ nroram @ (1 secret) @ (1 public)
-in
-
-let basic_nr_test2 =
-  fun ignore ->
-    let nroram = nr_init @ (3 public) @ (2 public) in
-    let _ = nr_add @ nroram @ (0 secret) @ (0 secret) @ (test_ostack_data1 @ ()) in
-    let _ = nr_add @ nroram @ (1 secret) @ (0 secret) @ (test_ostack_data2 @ ()) in
-    nr_rr @ nroram @ (1 secret) @ (0 public)
-in
-
-let basic_ostack_test =
-  fun ignore ->
-    let stack = { oram    -> nr_init @ (3 public) @ (2 public),
-                  idx_ref -> array(1 public)[fun ignore -> 0 secret],
-                  pos_ref -> array(1 public)[fun ignore -> rnd]
-                } in
-    let _ = stackop @ stack @ I secret @ (test_user_data1 @ ()) in
-    let _ = stackop @ stack @ I secret @ (test_user_data2 @ ()) in
-    stackop @ stack @ O secret @ (default_user_data @ ())
-in
-
-let advanced_ostack_test =
-  fun ignore ->
-    let stack = { oram    -> nr_init @ (7 public) @ (10 public),
-                  idx_ref -> array(1 public)[fun ignore -> 0 secret],
-                  pos_ref -> array(1 public)[fun ignore -> rnd]
-                } in
-    let _ = stackop @ stack @ I secret @ 0 secret in
-    let _ = stackop @ stack @ I secret @ 1 secret in
-    let o1 = stackop @ stack @ O secret @ (default_user_data @ ()) in
-    let o0 = stackop @ stack @ O secret @ (default_user_data @ ()) in
-    o0
-in
-
-let mike_test =
-  fun ignore ->
-    let x  = rnd in
-    let xs = use(x) in
-    let y  = rnd in
-    let ys = use(y) in
-    let z  = rnd in
-    let nroram = nr_init @ (3 public) @ (2 public) in
-    let _ = nr_add @ nroram @ (0 secret) @ xs @ { is_some -> I secret, ostack_pos -> rnd, ostack_val -> xs } in
-    let _ = nr_add @ nroram @ (1 secret) @ ys @ { is_some -> I secret, ostack_pos -> rnd, ostack_val -> ys } in
-    let { is_some -> _, ostack_pos -> _, ostack_val -> s } = nr_rr @ nroram @ (0 secret) @ reveal(x) in
-    let s' = (s & 1 secret) = 0 secret in
-    let (result, _) = mux (s', y, z) in
-    result
-in
-
-let sanity_check =
-  fun ignore ->
-    let x = rnd in
-    let y = rnd in
-    let g0 = use(x) in
-    let g = (g0 & 1 secret) = 0 secret in
-    let (a, b) = mux (g, x, y) in
-    let _ = reveal(a) in
-    let _ = reveal(b) in
-    ()
-in
-
-(* basic_trivial_test @ () *)
-(* basic_nr_test @ () *)
-(* basic_nr_test2 @ () *)
-(* mike_test @ () *)
-(* sanity_check @ () *)
-advanced_ostack_test @ ()
-(* basic_ostack_test @ () *)
-
-*)

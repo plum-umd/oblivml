@@ -1,238 +1,174 @@
 {
   open Lexing
   open Parser
-  open Syntax
   open Error
 
-  let extract_intconst s = int_of_string s
+  let extract_bool  = Base.Bool.of_string
 
-  let extract_boolconst s =
-    match s with
-      | "true"  -> true
-      | "false" -> false
-      | _       -> raise Impossible (* forbidden by lexer *)
+  let extract_int   = Base.Int.of_string
 
-  let extract_label s =
-    match s with
-      | "public" -> Label.public
-      | "secret" -> Label.secret
-      | _        -> raise Impossible (* forbidden by lexer *)
+  let extract_label = Label.of_string
 
-  let extract_type s =
-    match s with
-      | "int"   -> Type.TBInt
-      | "bool"  -> Type.TBBool
-      | "rint"  -> Type.TBRInt
-      | "rbool" -> Type.TBRBool
-      | "unit"  -> Type.TBUnit
-      | _       -> raise Impossible (* forbidden by lexer *)
-
-  let extract_kind s =
-    match s with
-      | "affine"    -> Kind.Affine
-      | "universal" -> Kind.Universal
-      | _           -> raise Impossible (* forbidden by lexer *)
+  let extract_btyp  = Type.Base.of_string
 }
 
 let whitespace = [' ' '\t' ]
 let newline    = ('\n' | '\r' '\n')
 
-let alpha      = ['a'-'z' 'A'-'Z']
+let letter     = ['a'-'z' 'A'-'Z']
 let digit      = ['0'-'9']
 
-(** Value Identifiers --
-      Any sequences of letters, decimal digits,
-      primes ('), or underbars (_) starting with a letter *)
-let vid        = alpha (alpha | digit | [''' '_'])*
+(** Bool Literal *)
+let bool_l     = ("true" | "false")
 
-(** Integer Constants --
-      An optional negation symbol (-), followed by
-      a non-empty sequence of decimal digits. *)
-let intconst   = '-'? digit+
+(** Int Literal *)
+let int_l      = '-'? digit+
 
-(** Boolean Constants --
-      Either the literal 'true' or 'false'. *)
-let boolconst  = ("true" | "false")
-
-(** Labels --
-      Either the literal 'public' or 'secret'. *)
+(** Label *)
 let label      = ("public" | "secret")
 
-(** Kinds --
-      Either the literal 'affine' or 'universal'. *)
-let kind       = ("affine" | "universal")
+(** Region *)
+let rbottom    = "_|_"
+let rvar       = '`' letter (letter | digit | [''' '_'])*
+let rjoin      = "\\/"
 
-(** Base Types --
-      The literals 'int', 'bool', 'rint', 'rbool', or 'unit'. *)
-let type       = ("int" | "bool" | "rint" | "rbool" | "unit")
+(** Types *)
+let base_t     = ("unit" | "bool" | "int" | "rbool" | "rint")
 
-(** Tokenizing OblivML *)
+(** Variable *)
+let var        = letter (letter | digit | [''' '_'])*
+
+(**********************************
+ **** OblivML Lexical Analysis ****
+ **********************************)
+
 rule token = parse
-(** Whitespace -- ignored *)
-  | whitespace  { token lexbuf }                    (* we ignore whitespace *)
+  (** Whitespace *)
+  | whitespace { token lexbuf }
 
-(** Newlines -- update location, then ignored *)
-  | newline     { new_line lexbuf; token lexbuf }   (* we update lexer and ignore the newline *)
+  (** Newline *)
+  | newline    { new_line lexbuf; token lexbuf }
 
-(** Variable Binding
+  (** Unit Literal *)
+  | "()"       { TLIT (Literal.LitUnit ()) }
 
-+ Basic: `let p1 = e2 in e3`
-+ Recursive: `let rec p1 = e2 in e3`
-+ Mutually Recursive: `let rec p1 = e2 and p3 = e4 in e5`
-*)
-  | "let"       { TLET }
-  | "rec"       { TREC }
-  | "in"        { TIN }
-  | "="         { TEQ }
-  | "and"       { TAND }
+  (** Bool Literal *)
+  | bool_l     { TLIT (Literal.LitBool (extract_bool (lexeme lexbuf))) }
 
-(** Conditionals
+  (** Int Literal *)
+  | int_l      { TLIT (Literal.LitInt (extract_int (lexeme lexbuf))) }
 
-+ Basic: `if e1 then e2 else e3`
-*)
-  | "if"        { TIF }
-  | "then"      { TTHEN }
-  | "else"      { TELSE }
+  (** Label *)
+  | label      { TLABEL (extract_label (lexeme lexbuf)) }
 
-(** Muxes
+  (** Region *)
+  | rbottom    { TREGBOT }
+  | rvar       { TREGVAR (Var.Var (lexeme lexbuf)) }
+  | rjoin      { TREGJOIN }
 
-+ Basic: `mux (e1, e1, e2)`
-*)
-  | "mux"       { TMUX }
-  | "("         { TLPAR }
-  | ")"         { TRPAR }
+  (** Flip *)
+  | "flip"     { TFLIP }
 
-(** Convert Random Value
+  (** Rnd *)
+  | "rnd"      { TRND }
 
-+ Secretly: `use(x)`
-+ Publicly: `reveal(x)`
-*)
-  | "use"       { TUSE }
-  | "reveal"    { TREVEAL }
+  (** Unary Boolean Operation *)
+  | "not"      { TNOT }
 
-(** Integer Constants *)
-  | intconst    { TLIT (Literal.LitInt (extract_intconst (lexeme lexbuf))) }
+  (** Binary Boolean Operation *)
+  | "&&"       { TBAND }
 
-(** Integer Operators
+  (** Unary Arithmetic Operation *)
+  (* N/A -- Placeholder *)
 
-+ Addition: `e1 + e2`
-+ Subtractiont: `e1 - e2`
-+ Multiplication: `e1 * e2`
-*)
-  | "+"         { TPLUS }
-  | "-"         { TMINUS }
-  | "*"         { TSTAR }
+  (** Binary Arithmetic Operation *)
+  | "+"        { TPLUS }
+  | "-"        { TMINUS }
+  | "*"        { TSTAR }
+  | "&"        { TLAND }
 
-(** Boolean Operators
+  (** Unary Arithmetic Relation *)
+  (* N/A -- Placeholder *)
 
-+ Conjunction: `e1 && e2`
-+ Disjunction: `e1 || e2`
-+ Negation: `not e`
-*)
-  | "&&"        { TBAND }
-  | "||"        { TBOR }
-  | "not"       { TBNOT }
+  (** Binary Arithmetic Relation *)
+  | "="        { TEQ }
 
-(** Bitwise Operators
+  (** Tuple *)
+  | "("        { TLPAR }
+  | ","        { TCOMMA }
+  | ")"        { TRPAR }
 
-+ AND: `e1 & e1`
-+ OR: `e1 | e2`
-+ NOT: `~ e`
-*)
-  | "&"         { TTAND }
-  | "|"         { TTOR }
-  | "~"         { TTNOT }
+  (** Record *)
+  | "{"        { TCLPAR }
+  | ";"        { TSEMI }
+  | "}"        { TCRPAR }
 
-(** Records
+  (** Record Access *)
+  | "."        { TDOT }
 
-+ Literals: `{ l1 = e1; l2 = e2; l3 = e3 }`
-+ Patterns: `{ l1 = p1; l2 = p2; l3 = p3 }`
-+ Access: `r1.f1`
-*)
-  | "{"         { TCLPAR }
-  | ";"         { TSEMI }
-  | "}"         { TCRPAR }
-  | "."         { TDOT }
+  (** Array Initialization *)
+  | "array"    { TARRAY }
+  | "["        { TSLPAR }
+  | "]"        { TSRPAR }
 
-(** Functions
+  (** Array Read *)
+  (* N/A -- Covered by `Array Initialization` *)
 
-+ Literals: `fun p1 p2 -> e`
-(* TODO(ins): recursive literals? `fun foo . p1 p2 -> e` *)
-*)
-  | "fun"       { TFUN }
-  | "->"        { TRARROW }
+  (** Array Write *)
+  | "<-"       { TLARROW }
 
-(** Arrays
+  (** Array Length *)
+  | "length"   { TLENGTH }
 
-+ Creation: `array(e1)[fun x -> e2]`
-+ Read: `e1[e2]`
-+ Write: `e1[e2] <- e3`
-+ Length: `length(e)`
-*)
-  | "array"     { TARRAY }
-  | "["         { TSLPAR }
-  | "]"         { TSRPAR }
-  | "<-"        { TLARROW }
-  | "length"    { TLENGTH }
+  (** Random -> Secret (Use) *)
+  | "use"      { TUSE }
 
-(** Type Ascription
+  (** Random -> Public (Reveal) *)
+  | "reveal"   { TREVEAL }
 
-+ Basic: `(e1 : t1)`
-*)
-  | ":"         { TCOLON }
+  (** Mux *)
+  | "mux"      { TMUX }
 
-(** Type Construction
+  (** Abstraction *)
+  | "fun"      { TFUN }
+  | "->"       { TRARROW }
 
-+ Base Types: `bt<l1, r1>`
-*)
-  | "<"         { TALPAR }
-  | ","         { TCOMMA }
-  | ">"         { TARPAR }
+  (** Recursive Abstraction *)
+  (* N/A -- Covered by `Abstraction` and `Record Access` *)
 
-(** Patterns
+  (** Application *)
+  (* N/A -- Application is juxtaposition *)
 
-+ Wildcard: `_`
-*)
-  | "_"         { TWILD }
+  (** Binding *)
+  | "let"      { TLET }
+  | "rec"      { TREC }
+  | "in"       { TIN }
 
-(** Type Aliasing
+  (** Type Alias *)
+  | "type"     { TTYPE }
 
-+ Basic: `type x = t`
-*)
-  | "type"      { TTYPE }
+  (** Type *)
+  | base_t     { TBTYP (extract_btyp (lexeme lexbuf)) }
+  | ":"        { TCOLON }
+  | "<"        { TALPAR }
+  | ">"        { TARPAR }
 
-(** Boolean Constants *)
-  | boolconst   { TLBOOL (extract_boolconst (lexeme lexbuf)) }
+  (** Conditional *)
+  | "if"       { TIF }
+  | "then"     { TTHEN }
+  | "else"     { TELSE }
 
-(** Labels *)
-  | label       { TLABEL (extract_label (lexeme lexbuf)) }
+  (** Identifier *)
+  | var        { TVAR (Var.Var (lexeme lexbuf)) }
 
-(** Regions *)
-  | region      { TREGION (extract_region (lexeme lexbuf)) }
-
-(** Base Types *)
-  | type        { TBTYPE (extract_type (lexeme lexbuf)) }
-
-(** Kinds *)
-  | kind        { TKIND (extract_kind (lexeme lexbuf)) }
-
-(** Random Integers *)
-  | "rnd"       { TRND }
-
-(** Random Boolean *)
-  | "flip"      { TFLIP }
-
-(** Value Identifiers *)
-  | vid         { TIDENT (lexeme lexbuf) }
-
-(** Comments *)
+  (** Comment *)
   | "(*"        { comment (lexeme_start_p lexbuf) lexbuf; token lexbuf }
   | "*)"        { raise (SyntaxError (lexeme_start_p lexbuf, "This comment terminator has no corresponding initiator.")) }
 
-(** EOF *)
+  (** EOF *)
   | eof         { TEOF }
 
-(** Failure -- couldn't find a valid token *)
+  (** Failure *)
   | _           { raise (SyntaxError (lexeme_start_p lexbuf, "Unexpected token.")) }
 
 and comment pos_inner = parse

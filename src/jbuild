@@ -1,7 +1,7 @@
 (jbuild_version 1)
 
 (library
-  ((name oblivml)
+  ((name oblivML)
    (libraries (base))))
 
 (ocamllex

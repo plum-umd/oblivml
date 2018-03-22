@@ -1,30 +1,41 @@
-module RExp = Rexp
+open Error
 
-type base =
-  | TBInt
-  | TBBool
-  | TBRInt
-  | TBRBool
-  | TBUnit
+module Base =
+  struct
+    type t =
+      | TBInt
+      | TBBool
+      | TBRInt
+      | TBRBool
+      | TBUnit
+
+    let of_string s =
+      match s with
+      | "()"    -> TBUnit
+      | "bool"  -> TBBool
+      | "int"   -> TBInt
+      | "rbool" -> TBRBool
+      | "rint"  -> TBRInt
+      | _       -> raise Impossible (* Forbidden by lexer *)
+  end
 
 type t =
   | TUnit
-  | TBit    of Label.t * RExp.t
-  | TFlip   of RExp.t
-  | TInt    of Label.t * RExp.t
+  | TBit    of Label.t * Region.Expr.t
+  | TFlip   of Region.Expr.t
+  | TInt    of Label.t * Region.Expr.t
   | TAlias  of Var.t
   | TTuple  of t * t
-  | TExistential of Region.t list * Constraints.t * t
   | TRecord of t Field.Map.t
   | TArray  of t
   | TFun    of t * t
-
+(*
 let rec to_string t =
   match t with
   | TUnit -> Printf.sprintf "unit"
-  | TBit (l, r) -> Printf.sprintf "bit@(%s, %s)" (Label.to_string l) (RExp.to_string r)
-  | TFlip r -> Printf.sprintf "flip@(%s)" (RExp.to_string r)
-  | TInt (l, r) -> Printf.sprintf "int@(%s, %s)" (Label.to_string l) (RExp.to_string r)
+  | TBit (l, r) -> Printf.sprintf "bit@(%s, %s)" (Label.to_string l) (Region.Expr.to_string r)
+  | TFlip r -> Printf.sprintf "flip@(%s)" (Region.Expr.to_string r)
+  | TInt (l, r) -> Printf.sprintf "int@(%s, %s)" (Label.to_string l) (Region.Expr.to_string r)
   | TAlias name        -> Printf.sprintf "%s" (Var.to_string name)
   | TTuple  (t1, t2)   -> Printf.sprintf "(%s ⨯ %s)" (to_string t1) (to_string t2)
   | TExistential (rs, cs, t) -> Printf.sprintf "∃ %s . %s & %s"
@@ -44,11 +55,11 @@ let rec equal t1 t2 =
   | (TUnit, TUnit) ->
      true
   | (TBit (l1, r1), TBit (l2, r2)) ->
-     Label.equal l1 l2 && RExp.equal r1 r2
+     Label.equal l1 l2 && Region.Expr.equal r1 r2
   | (TFlip r1, TFlip r2) ->
-     RExp.equal r1 r2
+     Region.Expr.equal r1 r2
   | (TInt (l1, r1), TInt (l2, r2)) ->
-     Label.equal l1 l2 && RExp.equal r1 r2
+     Label.equal l1 l2 && Region.Expr.equal r1 r2
   | (TTuple (t11, t12), TTuple (t21, t22)) ->
      (equal t11 t21) && (equal t12 t22)
   | (TExistential (rs1, cs1, t1), TExistential (rs2, cs2, t2)) ->
@@ -64,9 +75,9 @@ let rec equal t1 t2 =
 let rec free t =
   match t with
   | TUnit -> Region.Set.empty
-  | TBit (_, r) -> RExp.free r
-  | TFlip r -> RExp.free r
-  | TInt (_, r) -> RExp.free r
+  | TBit (_, r) -> Region.Expr.free r
+  | TFlip r -> Region.Expr.free r
+  | TInt (_, r) -> Region.Expr.free r
   | TAlias name -> failwith (Printf.sprintf "free should only be called on fully-resolved types: %s" (to_string t))
   | TTuple (t1, t2) -> Region.Set.union (free t1) (free t2)
   | TExistential (rs, _, t') -> Region.Set.diff (free t') (Region.Set.of_list rs)
@@ -78,7 +89,7 @@ let fresh x s t =
   let prefix = "interior" in
   let rec fresh' n =
     let curr = Region.Region (prefix ^ (string_of_int n)) in
-    if not (Region.equal x curr) && not (Region.Set.mem curr (RExp.free s)) && not (Region.Set.mem curr (free t)) then
+    if not (Region.equal x curr) && not (Region.Set.mem curr (Region.Expr.free s)) && not (Region.Set.mem curr (free t)) then
       curr
     else
       fresh' (n + 1)
@@ -88,9 +99,9 @@ let fresh x s t =
 let rec rsub1 t x s =
   match t with
   | TUnit -> TUnit
-  | TBit (l, r) -> TBit (l, RExp.rsub r x s)
-  | TFlip r -> TFlip (RExp.rsub r x s)
-  | TInt (l, r) -> TInt (l, RExp.rsub r x s)
+  | TBit (l, r) -> TBit (l, Region.Expr.rsub r x s)
+  | TFlip r -> TFlip (Region.Expr.rsub r x s)
+  | TInt (l, r) -> TInt (l, Region.Expr.rsub r x s)
   | TAlias x -> failwith (Printf.sprintf "types should be fully resolved for substitution: %s" (to_string t))
   | TTuple (t1, t2) -> TTuple (rsub1 t1 x s, rsub1 t2 x s)
   | TExistential (ys, cs, t_body) ->
@@ -111,11 +122,11 @@ and capture_avoid_sub y t x s =
   if Region.equal x y then
     (y, t)
   else
-    if not (Region.Set.mem y (RExp.free s)) then
+    if not (Region.Set.mem y (Region.Expr.free s)) then
       (y, rsub1 t x s)
     else
       let z = fresh x s t in
-      (z, rsub1 (rsub1 t y (RExp.Var z)) x s)
+      (z, rsub1 (rsub1 t y (Region.Expr.Var z)) x s)
 
 let rsub t xs ss =
   List.fold_left2 rsub1 t xs ss
@@ -137,14 +148,14 @@ let rec merge t1 t2 =
   | (TUnit, TUnit) -> TUnit
   | (TBit (l1, r1), TBit (l2, r2)) ->
      let l' = Label.join l1 l2 in
-     let r' = RExp.Join (r1, r2) in
+     let r' = Region.Expr.Join (r1, r2) in
      TBit (l', r')
   | (TFlip r1, TFlip r2) ->
-     let r' = RExp.Join (r1, r2) in
+     let r' = Region.Expr.Join (r1, r2) in
      TFlip r'
   | (TInt (l1, r1), TInt (l2, r2)) ->
      let l' = Label.join l1 l2 in
-     let r' = RExp.Join (r1, r2) in
+     let r' = Region.Expr.Join (r1, r2) in
      TInt (l', r')
   | (TTuple (t11, t12), TTuple (t21, t22)) ->
      let t_left = merge t11 t21 in
@@ -170,9 +181,9 @@ let rec merge t1 t2 =
 let rec join l r t =
   match t with
   | TUnit -> TUnit
-  | TBit (l', r') -> TBit (Label.join l l', RExp.Join (r, r'))
-  | TFlip r' -> TFlip (RExp.Join (r, r'))
-  | TInt (l', r') -> TInt (Label.join l l', RExp.Join (r, r'))
+  | TBit (l', r') -> TBit (Label.join l l', Region.Expr.Join (r, r'))
+  | TFlip r' -> TFlip (Region.Expr.Join (r, r'))
+  | TInt (l', r') -> TInt (Label.join l l', Region.Expr.Join (r, r'))
   | TAlias x -> TAlias x
   | TTuple (t1, t2) -> TTuple (join l r t1, join l r t2)
   | TRecord fields -> TRecord (Field.Map.map (join l r) fields)
@@ -181,3 +192,4 @@ let rec join l r t =
                      (to_string t)
          in
          failwith err
+ *)

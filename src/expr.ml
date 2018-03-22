@@ -20,31 +20,10 @@ and t' =
   (** Random Integer *)
   | ERnd      of { label  : Label.t
                  ; region : Region.Expr.t
+                 }
 
   (** Variable *)
   | EVar      of { name : Var.t
-                 }
-
-  (** Unary Arithmetic Operation *)
-  | EAUnOp    of { op  : Arith.Un.Op.t
-                 ; arg : t
-                 }
-
-  (** Binary Arithmetic Operation *)
-  | EABinOp   of { op  : Arith.Bin.Op.t
-                 ; lhs : t
-                 ; rhs : t
-                 }
-
-  (** Unary Relational Operation *)
-  | EAUnRel   of { op  : Arith.Un.Rel.t
-                 ; arg : t
-                 }
-
-  (** Binary Relation Operation *)
-  | EABinRel  of { rel : Arith.Bin.Rel.t
-                 ; lhs : t
-                 ; rhs : t
                  }
 
   (** Unary Boolean Operation *)
@@ -58,12 +37,39 @@ and t' =
                  ; rhs : t
                  }
 
+  (** Unary Arithmetic Operation *)
+  | EAUnOp    of { op  : Arith.Un.Op.t
+                 ; arg : t
+                 }
+
+  (** Binary Arithmetic Operation *)
+  | EABinOp   of { op  : Arith.Bin.Op.t
+                 ; lhs : t
+                 ; rhs : t
+                 }
+
+  (** Unary Arithmetic Relation *)
+  | EAUnRel   of { op  : Arith.Un.Rel.t
+                 ; arg : t
+                 }
+
+  (** Binary Arithmetic Relation *)
+  | EABinRel  of { rel : Arith.Bin.Rel.t
+                 ; lhs : t
+                 ; rhs : t
+                 }
+
   (** Tuple *)
   | ETuple    of { contents : (t, t) Tuple.t
                  }
 
   (** Record *)
-  | ERecord   of { contents : (Field.t, t) Record.t
+  | ERecord   of { contents : t Record.t
+                 }
+
+  (** Record Access *)
+  | ERecAcc   of { record : t
+                 ; field  : Var.t
                  }
 
   (** Array Initialization *)
