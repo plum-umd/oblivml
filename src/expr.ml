@@ -13,10 +13,13 @@ and t' =
                  }
 
   (** Random Boolean *)
-  | EFlip
+  | EFlip     of { label  : Label.t
+                 ; region : Region.Expr.t
+                 }
 
   (** Random Integer *)
-  | ERnd
+  | ERnd      of { label  : Label.t
+                 ; region : Region.Expr.t
 
   (** Variable *)
   | EVar      of { name : Var.t
@@ -120,7 +123,7 @@ and t' =
                  }
 
   (** Type Alias *)
-  | EType     of { alias : Type.Alias.t
+  | EType     of { alias : Var.t
                  ; typ   : Type.t
                  }
 
