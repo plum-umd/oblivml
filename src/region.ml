@@ -5,4 +5,9 @@ module Expr =
       | Var of Var.t
       | Join of t * t
 
+    let rec to_string rexpr =
+      match rexpr with
+      | Bot   -> "_|_"
+      | Var x -> Var.to_string x
+      | Join (rexpr1, rexpr2) -> Printf.sprintf "%s \\/ %s" (to_string rexpr1) (to_string rexpr2)
   end

@@ -153,13 +153,13 @@
 %start start
 %type <Expr.t> start
 
-%left TLARROW TRARROW TIN TREGJOIN
+%left TLARROW TRARROW TIN TREGJOIN TELSE
 %left TBAND
 %left TLAND
 %left TEQ
 %left TPLUS TMINUS
 %left TSTAR
-%nonassoc TNOT
+%nonassoc TNOT TARRAY
 %left TSLPAR TSRPAR TDOT
 
 /*************************
@@ -248,6 +248,16 @@ expr :
                                                                ; body  = $8
                                                                }) }
   /** Type Alias */
+  | TTYPE TVAR TEQ typ TIN expr { annotate (EType { alias = $2
+                                                  ; typ   = $4
+                                                  ; body  = $6
+                                                  }) }
+  /** Conditional */
+  | TIF expr TTHEN expr TELSE expr { annotate (EIf { guard = $2
+                                                    ; thenb = $4
+                                                    ; elseb = $6
+                                                    }) }
+  /** Error */
   | error { raise (SyntaxError (symbol_start_pos (), "Expected an expression.")) }
 ;
 
@@ -293,20 +303,28 @@ region :
   | TREGBOT { Region.Expr.Bot }
   | TREGVAR { Region.Expr.Var $1 }
   | region TREGJOIN region { Region.Expr.Join ($1, $3) }
+  /** Error */
+  | error { raise (SyntaxError (symbol_start_pos (), "Expected a region.")) }
 ;
 
 record_defs :
   | TVAR TEQ expr { [ ($1, $3) ] }
   | record_def record_defs { $1 :: $2 }
+  /** Error */
+  | error { raise (SyntaxError (symbol_start_pos (), "Expected a non-empty record.")) }
 ;
 
 record_def :
   | TVAR TEQ expr TSEMI { ($1, $3) }
+  /** Error */
+  | error { raise (SyntaxError (symbol_start_pos (), "Expected a record definition.")) }
 ;
 
 patterns :
   | pattern { [ $1 ] }
   | pattern patterns { $1 :: $2 }
+  /** Error */
+  | error { raise (SyntaxError (symbol_start_pos (), "Expected patterns.")) }
 ;
 
 pattern :
@@ -314,12 +332,42 @@ pattern :
   | TVAR  { Pattern.XVar $1 }
   | TLPAR pattern TCOMMA pattern TRPAR { Pattern.XTuple ($2, $4) }
   | TCLPAR record_patterns TCRPAR { Pattern.XRecord $2 }
+  | TLPAR pattern TCOLON typ TRPAR { Pattern.XAscr ($2, $4) }
 ;
 
 record_patterns :
   | TVAR TEQ pattern { [ ($1, $3) ] }
   | record_pattern record_patterns { $1 :: $2 }
+  /** Error */
+  | error { raise (SyntaxError (symbol_start_pos (), "Expected record patterns.")) }
 ;
 
 record_pattern :
   | TVAR TEQ pattern TSEMI { ($1, $3) }
+  /** Error */
+  | error { raise (SyntaxError (symbol_start_pos (), "Expected record pattern.")) }
+;
+
+typ :
+  | TBTYP TALPAR TLABEL TCOMMA region TARPAR { Type.TBase ($1, $3, $5) }
+  | TVAR { Type.TAlias $1 }
+  | typ TSTAR typ { Type.TTuple ($1, $3) }
+  | TCLPAR record_typs TCRPAR { Type.TRecord $2 }
+  | typ TARRAY { Type.TArray $1 }
+  | typ TRARROW typ { Type.TFun ($1, $3) }
+  /** Error */
+  | error { raise (SyntaxError (symbol_start_pos (), "Expected type.")) }
+;
+
+record_typs :
+  | TVAR TCOLON typ { Var.Map.singleton $1 $3 }
+  | record_typ record_typs { let (x, t) = $1 in Var.Map.add x t $2 }
+  /** Error */
+  | error { raise (SyntaxError (symbol_start_pos (), "Expected record types.")) }
+;
+
+record_typ :
+  | TVAR TCOLON typ TSEMI { ($1, $3) }
+  /** Error */
+  | error { raise (SyntaxError (symbol_start_pos (), "Expected record type.")) }
+;
