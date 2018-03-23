@@ -1,8 +1,7 @@
-I found a resource that potentially fixes my issue with parsing function application:
+# TODO
 
-https://stackoverflow.com/questions/27630269/parsing-function-application-with-happy
-
-TODO
-----
-
-* add a single 'literal' expression, rather than having an expression for each literal
+* Modify patterns to hold types
+  + Change pattern AST
+  + Change parsing of patterns
+* Add parsing for type aliases
+* Add parsing for conditionals
