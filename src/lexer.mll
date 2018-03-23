@@ -133,6 +133,9 @@ rule token = parse
   | "fun"      { TFUN }
   | "->"       { TRARROW }
 
+  (** Pattern *)
+  | "_"        { TWILD }
+
   (** Recursive Abstraction *)
   (* N/A -- Covered by `Abstraction` and `Record Access` *)
 

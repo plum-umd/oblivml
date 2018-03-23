@@ -93,11 +93,11 @@ and t' =
                  }
 
   (** Random -> Secret *)
-  | EUse      of { arg : t
+  | EUse      of { arg : Var.t
                  }
 
   (** Random -> Public *)
-  | EReveal   of { arg : t
+  | EReveal   of { arg : Var.t
                  }
 
   (** Mux *)

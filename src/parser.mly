@@ -11,6 +11,23 @@
     ; node = e
     }
 
+  let curry patterns body =
+    List.fold_right (fun pat acc -> annotate (EAbs { param = pat
+                                                   ; body  = acc
+                                                   })) patterns body
+
+  let curry_rec name patterns body =
+    match patterns with
+    | []      -> raise Impossible (* forbidden by parser *)
+    | p :: ps -> annotate (ERec { name  = name
+                                ; param = p
+                                ; body  = List.fold_right
+                                            (fun pat acc -> annotate (EAbs { param = pat
+                                                                           ; body  = acc
+                                                                           }))
+                                            ps
+                                            body
+                                })
 %}
 
 /***************************
@@ -95,6 +112,9 @@
 %token               TFUN
 %token               TRARROW
 
+/** Pattern */
+%token               TWILD
+
 /** Recursive Abstraction */
 /* N/A -- Covered by `Abstraction` and `Record Access` */
 
@@ -133,14 +153,14 @@
 %start start
 %type <Expr.t> start
 
-%left TREGJOIN
+%left TLARROW TRARROW TIN TREGJOIN
 %left TBAND
 %left TLAND
 %left TEQ
 %left TPLUS TMINUS
 %left TSTAR
 %nonassoc TNOT
-%left TDOT
+%left TSLPAR TSRPAR TDOT
 
 /*************************
  **** OBLIVML Parsing ****
@@ -152,22 +172,6 @@ start :
 ;
 
 expr :
-  /** Literal */
-  | TLIT TALPAR TLABEL TCOMMA region TARPAR { annotate (ELit { value  = $1
-                                                             ; label  = $3
-                                                             ; region = $5
-                                                             }) }
-  /** Flip */
-  | TFLIP TALPAR TLABEL TCOMMA region TARPAR { annotate (EFlip { label  = $3
-                                                               ; region = $5
-                                                               }) }
-  /** Rnd */
-  | TRND TALPAR TLABEL TCOMMA region TARPAR { annotate (ERnd { label  = $3
-                                                             ; region = $5
-                                                             }) }
-  /** Var */
-  | TVAR { annotate (EVar { name = $1
-                          }) }
   /** Unary Boolean Operation */
   | TNOT expr { annotate (EBUnOp { op  = Boolean.Un.Op.Not
                                  ; arg = $2
@@ -202,9 +206,7 @@ expr :
   /** Tuple */
   | TLPAR expr TCOMMA expr TRPAR { annotate (ETuple { contents = ($2, $4)
                                                     }) }
-  /** Record */
-  | TCLPAR record_defs TCRPAR { annotate (ERecord { contents = $2
-                                                 }) }
+  /** Record Access */
   | expr TDOT TVAR { annotate (ERecAcc { record = $1
                                        ; field  = $3
                                        }) }
@@ -215,7 +217,76 @@ expr :
   | expr TSLPAR expr TSRPAR { annotate (EArrRead { addr = $1
                                                  ; idx  = $3
                                                  }) }
+  | expr TSLPAR expr TSRPAR TLARROW expr { annotate (EArrWrite { addr  = $1
+                                                               ; idx   = $3
+                                                               ; value = $6
+                                                               }) }
+  | TLENGTH TLPAR expr TRPAR { annotate (EArrLen { addr = $3
+                                                 }) }
+  /** Mux */
+  | TMUX TLPAR expr TCOMMA expr TCOMMA expr TRPAR { annotate (EMux { guard = $3
+                                                                   ; lhs   = $5
+                                                                   ; rhs   = $7
+                                                                   }) }
+  /** Abstraction */
+  | TFUN patterns TRARROW expr { curry $2 $4 }
+  /** Recursive Abstraction */
+  | TFUN TVAR TDOT patterns TRARROW expr { curry_rec $2 $4 $6 }
+  /** Application (Stage) */
+  | fexpr { $1 }
+  /** Binding */
+  | TLET pattern TEQ expr TIN expr { annotate (ELet { pat   = $2
+                                                    ; value = $4
+                                                    ; body  = $6
+                                                    }) }
+  | TLET TVAR patterns TEQ expr TIN expr { annotate (ELet { pat   = Pattern.XVar $2
+                                                          ; value = curry $3 $5
+                                                          ; body  = $7
+                                                          }) }
+  | TLET TREC TVAR patterns TEQ expr TIN expr { annotate (ELet { pat   = Pattern.XVar $3
+                                                               ; value = curry_rec $3 $4 $6
+                                                               ; body  = $8
+                                                               }) }
+  /** Type Alias */
   | error { raise (SyntaxError (symbol_start_pos (), "Expected an expression.")) }
+;
+
+fexpr :
+  | atexpr { $1 }
+  /** Application */
+  | fexpr atexpr { annotate (EApp { lam = $1
+                                  ; arg = $2
+                                  }) }
+;
+
+atexpr :
+  /** Literal */
+  | TLIT TALPAR TLABEL TCOMMA region TARPAR { annotate (ELit { value  = $1
+                                                             ; label  = $3
+                                                             ; region = $5
+                                                             }) }
+  /** Flip */
+  | TFLIP TALPAR TLABEL TCOMMA region TARPAR { annotate (EFlip { label  = $3
+                                                               ; region = $5
+                                                               }) }
+  /** Rnd */
+  | TRND TALPAR TLABEL TCOMMA region TARPAR { annotate (ERnd { label  = $3
+                                                             ; region = $5
+                                                             }) }
+  /** Var */
+  | TVAR { annotate (EVar { name = $1
+                          }) }
+  /** Record */
+  | TCLPAR record_defs TCRPAR { annotate (ERecord { contents = $2
+                                                 }) }
+  /** Use */
+  | TUSE TLPAR TVAR TRPAR { annotate (EUse { arg = $3
+                                           }) }
+  /** Reveal */
+  | TREVEAL TLPAR TVAR TRPAR { annotate (EReveal { arg = $3
+                                                 }) }
+  /** Grouping */
+  | TLPAR expr TRPAR { $2 }
 ;
 
 region :
@@ -231,3 +302,24 @@ record_defs :
 
 record_def :
   | TVAR TEQ expr TSEMI { ($1, $3) }
+;
+
+patterns :
+  | pattern { [ $1 ] }
+  | pattern patterns { $1 :: $2 }
+;
+
+pattern :
+  | TWILD { Pattern.XWild }
+  | TVAR  { Pattern.XVar $1 }
+  | TLPAR pattern TCOMMA pattern TRPAR { Pattern.XTuple ($2, $4) }
+  | TCLPAR record_patterns TCRPAR { Pattern.XRecord $2 }
+;
+
+record_patterns :
+  | TVAR TEQ pattern { [ ($1, $3) ] }
+  | record_pattern record_patterns { $1 :: $2 }
+;
+
+record_pattern :
+  | TVAR TEQ pattern TSEMI { ($1, $3) }
