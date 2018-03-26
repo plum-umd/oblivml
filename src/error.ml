@@ -6,6 +6,7 @@ exception Impossible
 open Lexing
 
 exception SyntaxError of position * string
+exception TypeError of Section.t Base.Option.t * string
 
 let string_of_pos { pos_fname = f;
                     pos_lnum  = l;

@@ -1,6 +1,7 @@
 type t     =
   | Affine
   | Universal
+
 let bottom = Affine
 let top    = Universal
 

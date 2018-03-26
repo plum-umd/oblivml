@@ -45,6 +45,16 @@ let rec to_string t =
   | TFun (t1, t2) -> Printf.sprintf "%s -> %s" (to_string t1) (to_string t2)
   | _ -> ""
 
+module Env =
+  struct
+    include Var.Map
+  end
+
+module Aliases =
+  struct
+    include Var.Map
+  end
+
 (*
 let rec to_string t =
   match t with
