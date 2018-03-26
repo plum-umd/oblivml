@@ -26,6 +26,13 @@ module Base =
       | TBRBool -> "rbool"
       | TBRInt -> "rint"
 
+    let accessible tb =
+      match tb with
+      | TBUnit -> Kind.Universal
+      | TBBool -> Kind.Universal
+      | TBInt  -> Kind.Universal
+      | TBRBool -> Kind.Affine
+      | TBRInt -> Kind.Affine
   end
 
 type t =
@@ -44,6 +51,16 @@ let rec to_string t =
   | TArray t -> Printf.sprintf "%s array" (to_string t)
   | TFun (t1, t2) -> Printf.sprintf "%s -> %s" (to_string t1) (to_string t2)
   | _ -> ""
+
+let rec accessible t =
+  match t with
+  | TBase (tb, _, _) -> Base.accessible tb
+  | TAlias _ -> Kind.Universal
+  | TTuple (t1, t2) -> Kind.join (accessible t1) (accessible t2)
+  | TRecord bs ->
+     Var.Map.fold (fun _ t k -> Kind.join (accessible t) k) bs Kind.bottom
+  | TArray _ -> Kind.Universal
+  | TFun _ -> Kind.Universal
 
 module Env =
   struct
