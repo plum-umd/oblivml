@@ -43,7 +43,7 @@ let rec static (scope : Scope.t) (constrs : Constrs.t) (tenv : type_env) (aliase
         raise (TypeError (e.loc, msg)))
   | Expr.EBBinOp bbo ->
      let (t_lhs, tenv') = static scope constrs tenv aliases bbo.lhs in
-     match t_lhs with
+     (match t_lhs with
      | Type.TBase (Type.Base.TBBool, l_lhs, r_lhs) ->
         let (t_rhs, tenv'') = static scope constrs tenv' aliases bbo.rhs in
         (match t_rhs with
@@ -54,4 +54,79 @@ let rec static (scope : Scope.t) (constrs : Constrs.t) (tenv : type_env) (aliase
            raise (TypeError (bbo.rhs.loc, msg)))
      | _ ->
         let msg = Printf.sprintf "Expected type `bool`, but got %s." (Type.to_string t_lhs) in
-        raise (TypeError (bbo.lhs.loc, msg))
+        raise (TypeError (bbo.lhs.loc, msg)))
+  | Expr.EAUnOp auo ->
+     let ret = static scope constrs tenv aliases auo.arg in
+     let (t_arg, tenv') = ret in
+     (match t_arg with
+      | Type.TBase (Type.Base.TBInt, _, _) -> ret
+      | _ ->
+         let msg = Printf.sprintf "Expected type `int`, but got %s." (Type.to_string t_arg) in
+         raise (TypeError (e.loc, msg)))
+  | Expr.EABinOp abo ->
+     let (t_lhs, tenv') = static scope constrs tenv aliases abo.lhs in
+     (match t_lhs with
+      | Type.TBase (Type.Base.TBInt, l_lhs, r_lhs) ->
+         let (t_rhs, tenv'') = static scope constrs tenv' aliases abo.rhs in
+         (match t_rhs with
+          | Type.TBase (Type.Base.TBInt, l_rhs, r_rhs) ->
+             (Type.TBase (Type.Base.TBInt, Label.join l_lhs l_rhs, Region.Expr.Join (r_lhs, r_rhs)), tenv'')
+          | _ ->
+             let msg = Printf.sprintf "Expected type `int`, but got %s." (Type.to_string t_rhs) in
+             raise (TypeError (abo.rhs.loc, msg)))
+      | _ ->
+         let msg = Printf.sprintf "Expected type `int`, but got %s." (Type.to_string t_lhs) in
+         raise (TypeError (abo.lhs.loc, msg)))
+  | Expr.EAUnRel aur ->
+     let (t_arg, tenv') = static scope constrs tenv aliases aur.arg in
+     (match t_arg with
+      | Type.TBase (Type.Base.TBInt, l_arg, r_arg) ->
+         (Type.TBase (Type.Base.TBBool, l_arg, r_arg), tenv')
+      | _ ->
+         let msg = Printf.sprintf "Expected type `int`, but got %s." (Type.to_string t_arg) in
+         raise (TypeError (e.loc, msg)))
+  | Expr.EABinRel abr ->
+     let (t_lhs, tenv') = static scope constrs tenv aliases abr.lhs in
+     (match t_lhs with
+      | Type.TBase (Type.Base.TBInt, l_lhs, r_lhs) ->
+         let (t_rhs, tenv'') = static scope constrs tenv' aliases abr.rhs in
+         (match t_rhs with
+          | Type.TBase (Type.Base.TBInt, l_rhs, r_rhs) ->
+             (Type.TBase (Type.Base.TBBool, Label.join l_lhs l_rhs, Region.Expr.Join (r_lhs, r_rhs)), tenv'')
+          | _ ->
+             let msg = Printf.sprintf "Expected type `int`, but got %s." (Type.to_string t_rhs) in
+             raise (TypeError (abr.rhs.loc, msg)))
+      | _ ->
+         let msg = Printf.sprintf "Expected type `int`, but got %s." (Type.to_string t_lhs) in
+         raise (TypeError (abr.lhs.loc, msg)))
+  | Expr.ETuple tup ->
+     let (left, right) = tup.contents in
+     let (t_left, tenv') = static scope constrs tenv aliases left in
+     let (t_right, tenv'') = static scope constrs tenv' aliases right in
+     (Type.TTuple (t_left, t_right), tenv'')
+  | Expr.ERecord bindings ->
+     let (tbindings, tenv') = List.fold_left
+                                (fun (tbindings_acc, env_acc) (field, binding) ->
+                                  let (t, tenv_curr) = static scope constrs env_acc aliases binding in
+                                  (Var.Map.add field t tbindings_acc, tenv_curr))
+                                (Var.Map.empty, tenv)
+                                bindings.contents
+     in
+     (Type.TRecord tbindings, tenv')
+  (* | Expr.ERecAcc comp ->
+     let (t_rec, tenv') = static scope constrs tenv aliases comp.record in
+     ...
+
+     TODO(ins): Not sure how to type accessors, since they also need to be treated linearly.
+
+     Proposal:
+
+       < ENV = { } >
+       type my_record = { foo : rbool } in
+       < ENV = { } >
+       let r = { foo = flip } in
+       < ENV = { r |-> { foo |-> rbool } } >
+       r.foo
+       < ENV = { r |-> { foo |-> * } } >
+
+*)

@@ -49,7 +49,7 @@ and t' =
                  }
 
   (** Unary Arithmetic Relation *)
-  | EAUnRel   of { op  : Arith.Un.Rel.t
+  | EAUnRel   of { rel  : Arith.Un.Rel.t
                  ; arg : t
                  }
 
