@@ -1,2 +1,2 @@
-#install_printer OblivML.Label.pp;;
-#install_printer OblivML.Pattern.pp;;
+#install_printer Oblivml.Label.pp;;
+#install_printer Oblivml.Pattern.pp;;

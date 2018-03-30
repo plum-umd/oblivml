@@ -206,11 +206,7 @@ expr :
   /** Tuple */
   | TLPAR expr TCOMMA expr TRPAR { annotate (ETuple { contents = ($2, $4)
                                                     }) }
-  /** Record Access */
-  | expr TDOT TVAR { annotate (ERecAcc { record = $1
-                                       ; field  = $3
-                                       }) }
-  /** Array */
+    /** Array */
   | TARRAY TLPAR expr TRPAR TSLPAR expr TSRPAR { annotate (EArrInit { size = $3
                                                                     ; init = $6
                                                                     }) }
@@ -284,8 +280,9 @@ atexpr :
                                                              ; region = $5
                                                              }) }
   /** Var */
-  | TVAR { annotate (EVar { name = $1
-                          }) }
+  | TVAR path { annotate (EVar { name = $1
+                               ; path = $2
+                               }) }
   /** Record */
   | TCLPAR record_defs TCRPAR { annotate (ERecord { contents = $2
                                                  }) }
@@ -298,6 +295,12 @@ atexpr :
   /** Grouping */
   | TLPAR expr TRPAR { $2 }
 ;
+
+path :
+  | { [] }
+  | TDOT TVAR path { $2 :: $3 }
+;
+
 
 region :
   | TREGBOT { Region.Expr.Bot }

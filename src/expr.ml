@@ -24,6 +24,7 @@ and t' =
 
   (** Variable *)
   | EVar      of { name : Var.t
+                 ; path : Var.t list
                  }
 
   (** Unary Boolean Operation *)
@@ -65,11 +66,6 @@ and t' =
 
   (** Record *)
   | ERecord   of { contents : (Var.t * t) list
-                 }
-
-  (** Record Access *)
-  | ERecAcc   of { record : t
-                 ; field  : Var.t
                  }
 
   (** Array Initialization *)
