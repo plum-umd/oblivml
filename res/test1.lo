@@ -1,6 +1,0 @@
-let size = 5 public in
-let default_value = 42 secret in
-
-let default_bucket = (default_value, 0 secret) in
-let mem = array(size)[fun ignore -> default_bucket] in
-(default_bucket, mem)

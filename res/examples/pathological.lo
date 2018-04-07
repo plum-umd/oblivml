@@ -1,0 +1,15 @@
+(** This file demonstrates a pathology in the type system.
+
+    The revelation on line 10 fails to typecheck, but is actually safe. *)
+
+(* `s` is our secret *)
+let s = true<secret, _|_> in
+(* `r0` and `r1` are two coin flips *)
+let (r0, r1) = (flip<secret, `r0>, flip<secret, `r1>) in
+let r0_s = use(r0) in
+(* The muxes depend on `s`, but at the end of both muxes `v` = `r0` always *)
+let g = s && r0_s in
+let (v1, v2) = mux (g, r0, r1) in
+let (v, _) = mux (g, v1, v2) in
+(* Revealing is safe, since `v` = `r0` *)
+reveal(v)
