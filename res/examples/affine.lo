@@ -1,0 +1,24 @@
+(** This file demonstrates the utility of the affine types *)
+
+(* `s` is our secret *)
+let s = true<secret, _|_> in
+(* `r0` and `r1` are two coin flips *)
+let (r0, r1) = (flip<secret, `r0>, flip<secret, `r1>) in
+(* If the secret, `s`, is 0 then `z` is `r0`, otherwise it's `r1` *)
+let (z, _) = mux (s = 0<secret, _|_>, r0, r1) in
+(* Revealing the resulting coing, `z`, is fine *)
+let _ = reveal(z) in
+(* Revealing either of the original coins is bad *)
+reveal(r0)
+
+(* `s` being 0 is more likely if we observe two of the same value:
+
+    Pr[0 0 | s = 0] = 1/2
+    Pr[0 1 | s = 0] = 0
+    Pr[1 0 | s = 0] = 0
+    Pr[1 1 | s = 0] = 1/2
+
+    Pr[0 0 | s <> 0] = (1/4)
+    Pr[0 1 | s <> 0] = (1/4)
+    Pr[1 0 | s <> 0] = (1/4)
+    Pr[1 1 | s <> 0] = (1/4) *)
