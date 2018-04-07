@@ -1,7 +1,0 @@
-# TODO
-
-* Modify patterns to hold types
-  + Change pattern AST
-  + Change parsing of patterns
-* Add parsing for type aliases
-* Add parsing for conditionals
