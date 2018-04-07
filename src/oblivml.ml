@@ -35,4 +35,6 @@ module Section = Section
 module Expr = Expr
 
 (** Static Semantics *)
+module Scope = Scope
+module Constrs = Constrs
 module Static = Static
