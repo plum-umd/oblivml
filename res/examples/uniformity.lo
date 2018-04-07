@@ -1,0 +1,19 @@
+(** This file demonstrates the utility of probability regions in types *)
+
+(* `s` is our secret *)
+let s = true<secret, _|_> in
+(* `r0` and `r1` are two coin flips *)
+let (r0, r1) = (flip<secret, `r0>, flip<secret, `r1>) in
+let r0_s = use(r0) in
+(* If the secret, `s`, is true and `r0` is true then `v` is `r0` otherwise `v` is `r1` *)
+let (v, _) = mux (s && r0_s, r0, r1) in
+(* Revealing `v` is bad, it is correlated with `s` *)
+reveal(v)
+
+(* `s` being true is more likely if we observe a 1:
+
+    Pr[0 | s = 0] = (1/2)
+    Pr[1 | s = 0] = (1/2)
+
+    Pr[0 | s = 1] = 0
+    Pr[1 | s = 1] = 1 *)

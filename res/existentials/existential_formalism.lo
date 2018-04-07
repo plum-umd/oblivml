@@ -1,7 +1,0 @@
-let <alpha_x . x> = toss in
-let <alpha_y . y> = toss in
-let <alpha_z . z> = toss in
-let <alpha_w . w> = <alpha_y as alpha . y : flip@(alpha)> in
-let (result, ignore) = mux affine (use(x), z, w) in
-let x = reveal(result) in
-x
