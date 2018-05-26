@@ -113,37 +113,87 @@ let rec static (scope : Scope.t) (constrs : Constrs.t) (tenv : type_env) (aliase
         bindings.contents
     in
     (Type.TRecord t_bindings, tenv')
-(* | Expr.ERecAcc comp ->
-   let (t_rec, tenv') = static scope constrs tenv aliases comp.record in
-   ...
+  | Expr.EArrInit arr ->
+    let (t_size, tenv') = static scope constrs tenv aliases arr.size in
+    (match t_size with
+    | Type.TBase (Type.Base.TBInt, l_size, r_size) when Label.equal l_size Label.bottom && Region.equal r_size Region.Bot ->
+      let (t_body, tenv'') = static scope constrs tenv' aliases arr.init in
+      (match t_body with
+      | Type.TFun (Type.TBase (Type.Base.TBInt, l_body, r_body), t_arr) when Label.equal l_body Label.bottom && Region.equal r_body Region.Bot ->
+        (TArray t_arr, tenv'')
+      | _ ->
+          let msg = Printf.sprintf "Expected type `int -> _`, but got %s." (Type.to_string t_body) in
+          raise (TypeError (arr.init.loc, msg)))
+    | _ ->
+      let msg = Printf.sprintf "Expected type `int`, but got %s." (Type.to_string t_body) in
+      raise (TypeError (arr.size.loc, msg)))
+  | Expr.EArrRead read ->
+    let (t_addr, tenv') = static scope constrs tenv aliases read.addr in
+    (match t_addr with
+     | Type.TArray t_ele ->
+       let (t_idx, tenv'') = static scope constrs tenv' aliases read.idx in
+       (match t_idx with
+        | Type.TBase (Type.Base.TBInt, l_idx, r_idx) when Label.equal l_idx Label.bottom && Region.equal r_idx Region.Bot ->
+          (match Type.accessible t_ele with
+           | Kind.Universal ->
+             (t_ele, tenv'')
+           | Kind.Affine ->
+             let msg = Printf.sprintf "Attempting to read from %s (affine) array without a write." (Type.to_string t_ele) in
+             raise (TypeError (e.loc, msg)))
+        | _ ->
+          let msg = Printf.sprintf "Array indices must be public. Yours has type %s." (Type.to_string t_idx) in
+          raise (TypeError (read.idx.loc, msg)))
+     | _ ->
+       let msg = Printf.sprintf "Expected type `array _`, but got %s." (Type.to_string t_addr) in
+       raise (TypeError (read.addr.loc, msg)))
+  | Expr.EArrWrite write ->
+    let (t_addr, tenv') = static scope constrs tenv aliases write.addr in
+    (match t_addr with
+     | Type.TArray t_ele ->
+       let (t_idx, tenv'') = static scope constrs tenv' aliases write.idx in
+       (match t_idx with
+        | Type.TBase (Type.Base.TBInt, l_idx, r_idx) when Label.equal l_idx Label.bottom && Region.equal r_idx Region.Bot ->
+          let (t_value, tenv''') = static scope constrs tenv'' aliases write.value in
+          if Type.equal t_value t_ele then
+            (ele_t, tenv''')
+          else
+            let msg = Printf.sprintf "Attempting to write a value of type %s to an array of type %s." (Type.to_string t_value) (Type.to_string t_ele) in
+            raise (TypeError (e.loc, msg))
+        | _ ->
+          let msg = Printf.sprintf "Array indices must be public. Yours has type %s." (Type.to_string t_idx) in
+          raise (TypeError (read.idx.loc, msg)))
+     | _ ->
+       let msg = Printf.sprintf "Expected type `array _`, but got %s." (Type.to_string t_addr) in
+       raise (TypeError (read.addr.loc, msg)))
+  | Expr.EArrLen len ->
+    let (t_addr, tenv') = static scope constrs tenv aliases len.addr in
+    (match t_addr with
+     | Type.TArray _ ->
+       (Type.TBase (Type.Base.TBInt, Label.bottom, Region.Bot), tenv')
+     | _ ->
+       let msg = Printf.sprintf "Expected type `array _`, but got %s." (Type.to_string t_addr) in
+       raise (TypeError (len.addr.loc, msg)))
+  | Expr.EUse use ->
+    (try
+       let x_t = Type.Env.find use.name tenv in
+       match x_t with
+       | None ->
+         let msg = Printf.sprintf "Attempted to reference the variable %s, which has been consumed." (Var.to_string use.name) in
+         raise (TypeError (e.loc, msg))
+       | Some t ->
+         (match t with
+          | Type.TBase (Type.Base.TBRBool, l, r) ->
+            (Type.TBase (Type.Base.TBBool, Label.top, r), tenv)
+          | Type.TBase (Type.Base.TBRInt, l, r) ->
+            (Type.TBase (Type.Base.TBInt, Label.top, r), tenv)
+          | _ ->
 
-   TODO(ins): Not sure how to type accessors, since they also need to be treated linearly.
-
-   Proposal:
-
-     < ENV = { } >
-     type my_record = { foo : rbool ; bar : rbool } in
-     < ENV = { } >
-     let r = { foo = flip ; bar = flip } in
-     < ENV = { r |-> { foo |-> rbool } } >
-     r.foo
-     < ENV = { r |-> { foo |-> * ; bar |-> rbool } } >
-
-   Counterexample:
-
-     < ENV = { } >
-     type my_record = { foo : rbool ; bar : rbool } in
-     < ENV = { } >
-     let r1 = { foo = flip ; bar = flip } in
-     < ENV = { r1 |-> { foo |-> rbool ; bar |-> rbool } } >
-     let r2 = r1 in
-     < ENV = { r1 |-> { foo |-> rbool ; bar |-> rbool } ; r2 |-> { foo |-> rbool ; bar |-> rbool } } >
-     let x = r1.foo in
-     < ENV = { r1 |-> { foo |-> * ; bar |-> rbool } ; r2 |-> { foo |-> rbool ; bar |-> rbool } } >
-     let y = r2.foo in
-     < ENV = { r1 |-> { foo |-> * ; bar |-> rbool } ; r2 |-> { foo |-> * ; bar |-> rbool } } >
-
-   Notice that `x` and `y` now hold two copies of the affine value. This is bad. This is why records
-   cannot be treated universally. Its kind must be the concat of all the kinds of its components.
-*)
-  | _ -> failwith "Unimplemented"
+         match Type.accessible t with
+         | Kind.Universal ->
+           (t, tenv)
+         | Kind.Affine ->
+           (t, Type.Env.add x.name None tenv)
+     with
+     | Not_found ->
+       let msg = Printf.sprintf "The variable %s is undefined." (Var.to_string x.name) in
+       raise (TypeError (e.loc, msg)))

@@ -1,6 +1,7 @@
 (* Impossible Errors *)
 
 exception Impossible
+exception Unimplemented of string
 
 (* Syntax Errors *)
 open Lexing
