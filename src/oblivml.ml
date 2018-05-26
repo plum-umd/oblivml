@@ -3,9 +3,6 @@ module Lexer = Lexer
 module Parser = Parser
 module Util = Util
 
-(** Errors and annotations that may occur *)
-module Error = Error
-
 (** Type Syntax *)
 module Kind = Kind
 module Type = Type
@@ -24,9 +21,6 @@ module Var = Var
 module Boolean = Boolean
 module Arith = Arith
 
-(** Tuples *)
-module Tuple = Tuple
-
 (** Patterns *)
 module Pattern = Pattern
 
@@ -35,6 +29,5 @@ module Section = Section
 module Expr = Expr
 
 (** Static Semantics *)
-module Scope = Scope
 module Constrs = Constrs
 module Static = Static

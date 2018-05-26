@@ -1,4 +1,5 @@
-open Base
+open Core
+open Stdio
 
 type t =
   | LitUnit of Unit.t

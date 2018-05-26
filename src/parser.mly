@@ -1,7 +1,12 @@
 %{
+  open Core
+  open Stdio
+
   open Parsing
+
   open Expr
-  open Error
+
+  exception SyntaxError of Position.t * String.t
 
   (** Annotate an AST node with positions in source. *)
   let annotate e =
@@ -12,21 +17,23 @@
     }
 
   let curry patterns body =
-    List.fold_right (fun pat acc -> annotate (EAbs { param = pat
-                                                   ; body  = acc
-                                                   })) patterns body
+    List.fold_right patterns
+                    ~init:body
+                    ~f:(fun pat acc ->
+                            annotate (EAbs { param = pat
+                                           ; body  = acc
+                                           }))
 
   let curry_rec name patterns body =
     match patterns with
-    | []      -> raise Impossible (* forbidden by parser *)
+    | []      -> failwith "Impossible: forbidden by lexer / parser."
     | p :: ps -> annotate (ERec { name  = name
                                 ; param = p
-                                ; body  = List.fold_right
-                                            (fun pat acc -> annotate (EAbs { param = pat
-                                                                           ; body  = acc
-                                                                           }))
-                                            ps
-                                            body
+                                ; body  = List.fold_right ps
+                                                          ~init:body
+                                                          ~f:(fun pat acc -> annotate (EAbs { param = pat
+                                                                                            ; body  = acc
+                                                                                            }))
                                 })
 %}
 
@@ -363,8 +370,8 @@ typ :
 ;
 
 record_typs :
-  | TVAR TCOLON typ { Var.Map.singleton $1 $3 }
-  | record_typ record_typs { let (x, t) = $1 in Var.Map.add x t $2 }
+  | TVAR TCOLON typ { Map.singleton (module Var) $1 $3 }
+  | record_typ record_typs { let (x, t) = $1 in Map.set $2 ~key:x ~data:t }
   /** Error */
   | error { raise (SyntaxError (symbol_start_pos (), "Expected record types.")) }
 ;

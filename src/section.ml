@@ -1,4 +1,7 @@
+open Core
+open Stdio
+
 type t =
-  { l_pos : Lexing.position
-  ; r_pos : Lexing.position
+  { l_pos : Position.t
+  ; r_pos : Position.t
   }
