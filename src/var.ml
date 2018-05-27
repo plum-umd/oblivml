@@ -1,14 +1,12 @@
-type t = Var of string
+open Core
+open Stdio
 
-let to_string (Var x) = x
+module T = struct
+  type t = Var of String.t
+  [@@deriving compare, sexp_of]
 
-module Ordered : Map.OrderedType with type t = t =
-  struct
-    type var = t
-    type t = var
+  let to_string (Var x) = x
+end
 
-    let compare (Var x) (Var y) = String.compare x y
-  end
-
-module Set = Extensions.Set.Make(Ordered)
-module Map = Map.Make(Ordered)
+include T
+include Comparator.Make(T)

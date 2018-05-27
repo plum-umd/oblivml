@@ -1,4 +1,5 @@
-open Base
+open Core
+open Stdio
 
 type t =
   { loc  : Section.t Option.t
@@ -61,7 +62,7 @@ and t' =
                  }
 
   (** Tuple *)
-  | ETuple    of { contents : (t, t) Tuple.t
+  | ETuple    of { contents : (t, t) Tuple.T2.t
                  }
 
   (** Record *)

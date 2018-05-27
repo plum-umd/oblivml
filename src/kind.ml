@@ -1,3 +1,6 @@
+open Core
+open Stdio
+
 type t     =
   | Affine
   | Universal

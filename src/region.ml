@@ -1,3 +1,6 @@
+open Core
+open Stdio
+
 module Expr =
   struct
     type t =

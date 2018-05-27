@@ -1,15 +1,11 @@
 {
+  open Core
+  open Stdio
+
   open Lexing
   open Parser
-  open Error
 
-  let extract_bool  = Base.Bool.of_string
-
-  let extract_int   = Base.Int.of_string
-
-  let extract_label = Label.of_string
-
-  let extract_btyp  = Type.Base.of_string
+  exception SyntaxError of Position.t * String.t
 }
 
 let whitespace = [' ' '\t' ]
@@ -53,13 +49,13 @@ rule token = parse
   | "()"       { TLIT (Literal.LitUnit ()) }
 
   (** Bool Literal *)
-  | bool_l     { TLIT (Literal.LitBool (extract_bool (lexeme lexbuf))) }
+  | bool_l     { TLIT (Literal.LitBool (Bool.of_string (lexeme lexbuf))) }
 
   (** Int Literal *)
-  | int_l      { TLIT (Literal.LitInt (extract_int (lexeme lexbuf))) }
+  | int_l      { TLIT (Literal.LitInt (Int.of_string (lexeme lexbuf))) }
 
   (** Label *)
-  | label      { TLABEL (extract_label (lexeme lexbuf)) }
+  | label      { TLABEL (Label.of_string (lexeme lexbuf)) }
 
   (** Region *)
   | rbottom    { TREGBOT }
@@ -151,7 +147,7 @@ rule token = parse
   | "type"     { TTYPE }
 
   (** Type *)
-  | base_t     { TBTYP (extract_btyp (lexeme lexbuf)) }
+  | base_t     { TBTYP (Type.Base.of_string (lexeme lexbuf)) }
   | ":"        { TCOLON }
   | "<"        { TALPAR }
   | ">"        { TARPAR }
@@ -179,4 +175,3 @@ and comment pos_inner = parse
   | "*)"    { () }
   | eof     { raise (SyntaxError (pos_inner, "This comment initiator has no corresponding terminator.")) }
   | newline { new_line lexbuf; comment pos_inner lexbuf }
-  | _       { comment pos_inner lexbuf }
