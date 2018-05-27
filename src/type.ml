@@ -1,4 +1,5 @@
-open Error
+open Core
+open Stdio
 
 module Base =
   struct
@@ -16,7 +17,7 @@ module Base =
       | "int"   -> TBInt
       | "rbool" -> TBRBool
       | "rint"  -> TBRInt
-      | _       -> raise Impossible (* Forbidden by lexer *)
+      | _       -> failwith "Impossible: forbidden by lexer / parser."
 
     let to_string tb =
       match tb with
@@ -39,7 +40,7 @@ type t =
   | TBase   of Base.t * Label.t * Region.Expr.t
   | TAlias  of Var.t
   | TTuple  of t * t
-  | TRecord of t Var.Map.t
+  | TRecord of (Var.t, t, Var.comparator_witness) Map.t
   | TArray  of t
   | TFun    of t * t
 
@@ -58,19 +59,9 @@ let rec accessible t =
   | TAlias _ -> Kind.Universal
   | TTuple (t1, t2) -> Kind.join (accessible t1) (accessible t2)
   | TRecord bs ->
-     Var.Map.fold (fun _ t k -> Kind.join (accessible t) k) bs Kind.bottom
+     Map.fold bs ~init:Kind.bottom ~f:(fun ~key:_ ~data:t k -> Kind.join (accessible t) k)
   | TArray _ -> Kind.Universal
   | TFun _ -> Kind.Universal
-
-module Env =
-  struct
-    include Var.Map
-  end
-
-module Aliases =
-  struct
-    include Var.Map
-  end
 
 (*
 let rec to_string t =

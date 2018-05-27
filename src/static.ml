@@ -1,9 +1,14 @@
-open Error
+open Core
+open Stdio
 
-type type_env = (Type.t Base.Option.t) Type.Env.t
-type type_aliases = Type.t Type.Aliases.t
+exception TypeError of Section.t Option.t * String.t
 
-let rec static (scope : Scope.t) (constrs : Constrs.t) (tenv : type_env) (aliases : type_aliases) (e : Expr.t) : Type.t * type_env =
+type scope_t   = (Var.t, Var.comparator_witness) Set.t
+type constrs_t = Unit.t
+type env_t     = (Var.t, Type.t Option.t, Var.comparator_witness) Map.t
+type aliases_t = (Var.t, Type.t, Var.comparator_witness) Map.t
+
+let rec static (scope : scope_t) (constrs : constrs_t) (tenv : env_t) (aliases : aliases_t) (e : Expr.t) : Type.t * env_t =
   match e.node with
   | Expr.ELit  l -> (TBase (Literal.to_type l.value, l.label, l.region), tenv)
   | Expr.EFlip f ->
@@ -18,7 +23,7 @@ let rec static (scope : Scope.t) (constrs : Constrs.t) (tenv : type_env) (aliase
       (TBase (Type.Base.TBRInt, r.label, r.region), tenv)
   | Expr.EVar x ->
     (try
-       let x_t = Type.Env.find x.name tenv in
+       let x_t = Map.find_exn tenv x.name in
        match x_t with
        | None ->
          let msg = Printf.sprintf "Attempted to reference the variable %s, which has been consumed." (Var.to_string x.name) in
@@ -28,7 +33,7 @@ let rec static (scope : Scope.t) (constrs : Constrs.t) (tenv : type_env) (aliase
          | Kind.Universal ->
            (t, tenv)
          | Kind.Affine ->
-           (t, Type.Env.add x.name None tenv)
+           (t, Map.set tenv x.name None)
      with
      | Not_found ->
        let msg = Printf.sprintf "The variable %s is undefined." (Var.to_string x.name) in
@@ -105,12 +110,13 @@ let rec static (scope : Scope.t) (constrs : Constrs.t) (tenv : type_env) (aliase
     let (t_right, tenv'') = static scope constrs tenv' aliases right in
     (Type.TTuple (t_left, t_right), tenv'')
   | Expr.ERecord bindings ->
-    let (t_bindings, tenv') = List.fold_left
-        (fun (t_bindings_acc, env_acc) (field, binding) ->
-           let (t, tenv_curr) = static scope constrs env_acc aliases binding in
-           (Var.Map.add field t t_bindings_acc, tenv_curr))
-        (Var.Map.empty, tenv)
+    let (t_bindings, tenv') =
+      List.fold_left
         bindings.contents
+        ~init:(Map.empty (module Var), tenv)
+        ~f:(fun (t_bindings_acc, env_acc) (field, binding) ->
+           let (t, tenv_curr) = static scope constrs env_acc aliases binding in
+           (Map.set t_bindings_acc field t, tenv_curr))
     in
     (Type.TRecord t_bindings, tenv')
   | Expr.EArrInit arr ->
