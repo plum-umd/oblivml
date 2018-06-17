@@ -40,7 +40,7 @@ type t =
   | TBase   of Base.t * Label.t * Region.Expr.t
   | TAlias  of Var.t
   | TTuple  of t * t
-  | TRecord of (Var.t, t, Var.comparator_witness) Map.t
+  | TRecord of (Var.t, t Option.t, Var.comparator_witness) Map.t
   | TArray  of t
   | TFun    of t * t
 
@@ -59,7 +59,7 @@ let rec accessible t =
   | TAlias _ -> Kind.Universal
   | TTuple (t1, t2) -> Kind.join (accessible t1) (accessible t2)
   | TRecord bs ->
-     Map.fold bs ~init:Kind.bottom ~f:(fun ~key:_ ~data:t k -> Kind.join (accessible t) k)
+     Map.fold bs ~init:Kind.bottom ~f:(fun ~key:_ ~data:m_t k -> Kind.join (match m_t with | None -> Kind.Universal | Some t -> accessible t) k)
   | TArray _ -> Kind.Universal
   | TFun _ -> Kind.Universal
 

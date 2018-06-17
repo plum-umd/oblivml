@@ -10,34 +10,85 @@ type aliases_t = (Var.t, Type.t, Var.comparator_witness) Map.t
 
 let rec static (scope : scope_t) (constrs : constrs_t) (tenv : env_t) (aliases : aliases_t) (e : Expr.t) : Type.t * env_t =
   match e.node with
-  | Expr.ELit  l -> (TBase (Literal.to_type l.value, l.label, l.region), tenv)
+  | Expr.ELit  l ->
+    (TBase (Literal.to_type l.value, l.label, l.region), tenv)
   | Expr.EFlip f ->
-    if Region.Expr.eq f.region Region.Expr.Bot then
+    if Region.Expr.equiv f.region Region.Expr.Bot then
       raise (TypeError (e.loc, "Region annotation cannot be bottom."))
     else
       (TBase (Type.Base.TBRBool, f.label, f.region), tenv)
   | Expr.ERnd  r ->
-    if Region.Expr.eq r.region Region.Expr.Bot then
+    if Region.Expr.equiv r.region Region.Expr.Bot then
       raise (TypeError (e.loc, "Region annotation cannot be bottom."))
     else
       (TBase (Type.Base.TBRInt, r.label, r.region), tenv)
   | Expr.EVar x ->
-    (try
-       let x_t = Map.find_exn tenv x.name in
-       match x_t with
-       | None ->
-         let msg = Printf.sprintf "Attempted to reference the variable %s, which has been consumed." (Var.to_string x.name) in
-         raise (TypeError (e.loc, msg))
-       | Some t ->
-         match Type.accessible t with
-         | Kind.Universal ->
-           (t, tenv)
-         | Kind.Affine ->
-           (t, Map.set tenv x.name None)
-     with
-     | Not_found ->
-       let msg = Printf.sprintf "The variable %s is undefined." (Var.to_string x.name) in
-       raise (TypeError (e.loc, msg)))
+    (match x.path with
+     | [] -> (* This is a normal variable *)
+       (try
+          let x_t = Map.find_exn tenv x.name in
+          match x_t with
+          | None ->
+            let msg = Printf.sprintf "Attempted to reference the variable %s, which has been consumed." (Var.to_string x.name) in
+            raise (TypeError (e.loc, msg))
+          | Some t ->
+            match Type.accessible t with
+            | Kind.Universal ->
+              (t, tenv)
+            | Kind.Affine ->
+              (t, Map.set tenv x.name None)
+        with
+        | Not_found ->
+          let msg = Printf.sprintf "The variable %s is undefined." (Var.to_string x.name) in
+          raise (TypeError (e.loc, msg)))
+     | _ -> (* This is a record access *)
+       (try
+          let x_t = Map.find_exn tenv x.name in
+          match x_t with
+          | None ->
+            let msg = Printf.sprintf "Attempted to reference the variable %s, which has been consumed." (Var.to_string x.name) in
+            raise (TypeError (e.loc, msg))
+          | Some t ->
+            (match t with
+             | TRecord record ->
+               let rec consume_path path record =
+                 match path with
+                 | [] -> failwith "Impossible: initial path always has at least 1 element"
+                 | [ y ] ->
+                   let y_t = Map.find_exn record y in
+                   (match y_t with
+                    | None ->
+                      let msg = Printf.sprintf "A variable on the path %s has already been consumed."
+                          (String.concat ((Var.to_string x.name) :: (List.map path ~f:Var.to_string)) ~sep:".") in
+                      raise (TypeError (e.loc, msg))
+                    | Some t ->
+                      (match Type.accessible t with
+                       | Kind.Universal -> record
+                       | Kind.Affine -> Map.set record y None))
+                 | inner :: rest ->
+                   let inner_t = Map.find_exn record inner in
+                   (match inner_t with
+                    | None ->
+                      let msg = Printf.sprintf "A variable on the path %s has already been consumed."
+                          (String.concat ((Var.to_string x.name) :: (List.map path ~f:Var.to_string)) ~sep:".") in
+                      raise (TypeError (e.loc, msg))
+                    | Some t ->
+                      (match t with
+                       | TRecord inner_record ->
+                         consume_path rest inner_record
+                       | _ ->
+                         let msg = Printf.sprintf "Dot notation is only allowed for record types, %s has type %s." (Var.to_string inner) (Type.to_string t) in
+                         raise (TypeError (e.loc, msg))))
+               in
+               let record' = consume_path x.path record in
+               (TRecord record', tenv)
+             | _ ->
+               let msg = Printf.sprintf "Dot notation is only allowed for record types, %s has type %s." (Var.to_string x.name) (Type.to_string t) in
+               raise (TypeError (e.loc, msg)))
+        with
+        | Not_found ->
+          let msg = Printf.sprintf "The variable %s is undefined." (Var.to_string x.name) in
+          raise (TypeError (e.loc, msg))))
   | Expr.EBUnOp buo ->
     let ret = static scope constrs tenv aliases buo.arg in
     let (t_arg, tenv') = ret in
@@ -116,22 +167,22 @@ let rec static (scope : scope_t) (constrs : constrs_t) (tenv : env_t) (aliases :
         ~init:(Map.empty (module Var), tenv)
         ~f:(fun (t_bindings_acc, env_acc) (field, binding) ->
            let (t, tenv_curr) = static scope constrs env_acc aliases binding in
-           (Map.set t_bindings_acc field t, tenv_curr))
+           (Map.set t_bindings_acc field (Some t), tenv_curr))
     in
     (Type.TRecord t_bindings, tenv')
   | Expr.EArrInit arr ->
     let (t_size, tenv') = static scope constrs tenv aliases arr.size in
     (match t_size with
-    | Type.TBase (Type.Base.TBInt, l_size, r_size) when Label.equal l_size Label.bottom && Region.equal r_size Region.Bot ->
+    | Type.TBase (Type.Base.TBInt, l_size, r_size) when Label.equal l_size Label.bottom && Region.Expr.equiv r_size Region.Expr.Bot ->
       let (t_body, tenv'') = static scope constrs tenv' aliases arr.init in
       (match t_body with
-      | Type.TFun (Type.TBase (Type.Base.TBInt, l_body, r_body), t_arr) when Label.equal l_body Label.bottom && Region.equal r_body Region.Bot ->
+      | Type.TFun (Type.TBase (Type.Base.TBInt, l_body, r_body), t_arr) when Label.equal l_body Label.bottom && Region.Expr.equiv r_body Region.Expr.Bot ->
         (TArray t_arr, tenv'')
       | _ ->
           let msg = Printf.sprintf "Expected type `int -> _`, but got %s." (Type.to_string t_body) in
           raise (TypeError (arr.init.loc, msg)))
     | _ ->
-      let msg = Printf.sprintf "Expected type `int`, but got %s." (Type.to_string t_body) in
+      let msg = Printf.sprintf "Expected type `int`, but got %s." (Type.to_string t_size) in
       raise (TypeError (arr.size.loc, msg)))
   | Expr.EArrRead read ->
     let (t_addr, tenv') = static scope constrs tenv aliases read.addr in
@@ -139,7 +190,7 @@ let rec static (scope : scope_t) (constrs : constrs_t) (tenv : env_t) (aliases :
      | Type.TArray t_ele ->
        let (t_idx, tenv'') = static scope constrs tenv' aliases read.idx in
        (match t_idx with
-        | Type.TBase (Type.Base.TBInt, l_idx, r_idx) when Label.equal l_idx Label.bottom && Region.equal r_idx Region.Bot ->
+        | Type.TBase (Type.Base.TBInt, l_idx, r_idx) when Label.equal l_idx Label.bottom && Region.Expr.equiv r_idx Region.Expr.Bot ->
           (match Type.accessible t_ele with
            | Kind.Universal ->
              (t_ele, tenv'')
@@ -152,13 +203,13 @@ let rec static (scope : scope_t) (constrs : constrs_t) (tenv : env_t) (aliases :
      | _ ->
        let msg = Printf.sprintf "Expected type `array _`, but got %s." (Type.to_string t_addr) in
        raise (TypeError (read.addr.loc, msg)))
-  | Expr.EArrWrite write ->
+  (* | Expr.EArrWrite write ->
     let (t_addr, tenv') = static scope constrs tenv aliases write.addr in
     (match t_addr with
      | Type.TArray t_ele ->
        let (t_idx, tenv'') = static scope constrs tenv' aliases write.idx in
        (match t_idx with
-        | Type.TBase (Type.Base.TBInt, l_idx, r_idx) when Label.equal l_idx Label.bottom && Region.equal r_idx Region.Bot ->
+        | Type.TBase (Type.Base.TBInt, l_idx, r_idx) when Label.equal l_idx Label.bottom && Region.Expr.equiv r_idx Region.Expr.Bot ->
           let (t_value, tenv''') = static scope constrs tenv'' aliases write.value in
           if Type.equal t_value t_ele then
             (ele_t, tenv''')
@@ -202,4 +253,5 @@ let rec static (scope : scope_t) (constrs : constrs_t) (tenv : env_t) (aliases :
      with
      | Not_found ->
        let msg = Printf.sprintf "The variable %s is undefined." (Var.to_string x.name) in
-       raise (TypeError (e.loc, msg)))
+       raise (TypeError (e.loc, msg)))) *)
+  | _ -> failwith "!!"

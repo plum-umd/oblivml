@@ -370,8 +370,8 @@ typ :
 ;
 
 record_typs :
-  | TVAR TCOLON typ { Map.singleton (module Var) $1 $3 }
-  | record_typ record_typs { let (x, t) = $1 in Map.set $2 ~key:x ~data:t }
+  | TVAR TCOLON typ { Map.singleton (module Var) $1 (Some $3) }
+  | record_typ record_typs { let (x, t) = $1 in Map.set $2 ~key:x ~data:(Some t) }
   /** Error */
   | error { raise (SyntaxError (symbol_start_pos (), "Expected record types.")) }
 ;
