@@ -10,22 +10,21 @@ and t' =
   (** Literal *)
   | ELit      of { value  : Literal.t
                  ; label  : Label.t
-                 ; region : Region.Expr.t
+                 ; region : Region.t
                  }
 
   (** Random Boolean *)
   | EFlip     of { label  : Label.t
-                 ; region : Region.Expr.t
+                 ; region : Region.t
                  }
 
   (** Random Integer *)
   | ERnd      of { label  : Label.t
-                 ; region : Region.Expr.t
+                 ; region : Region.t
                  }
 
   (** Variable *)
-  | EVar      of { name : Var.t
-                 ; path : Var.t list
+  | EVar      of { path : Var.t list
                  }
 
   (** Unary Boolean Operation *)

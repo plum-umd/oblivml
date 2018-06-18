@@ -1,26 +1,14 @@
 open Core
 open Stdio
 
-module Expr =
-  struct
-    type t =
-      | Bot
-      | Var of Var.t
-      | Join of t * t
+type t = (Var.t, Var.comparator_witness) Set.t
 
-    let rec to_string rexpr =
-      match rexpr with
-      | Bot   -> "_|_"
-      | Var x -> Var.to_string x
-      | Join (rexpr1, rexpr2) -> Printf.sprintf "%s \\/ %s" (to_string rexpr1) (to_string rexpr2)
+let bottom = Set.empty (module Var)
 
-    let eq rexpr1 rexpr2 = rexpr1 = rexpr2
+let var v = Set.singleton (module Var) v
 
-    let normalize rexpr =
-      match rexpr with
-      | Join (Bot, r2) -> r2
-      | Join (r1, Bot) -> r1
-      | _ -> rexpr
+let join r1 r2 = Set.union r1 r2
 
-    let equiv rexpr1 rexpr2 = eq (normalize rexpr1) (normalize rexpr2)
-  end
+let equiv r1 r2 = Set.equal r1 r2
+
+let to_string r = Printf.sprintf "%s \/ _|_" (String.concat (List.map (Set.to_list r) ~f:Var.to_string) ~sep:" \/ ")

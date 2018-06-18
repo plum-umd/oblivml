@@ -287,9 +287,8 @@ atexpr :
                                                              ; region = $5
                                                              }) }
   /** Var */
-  | TVAR path { annotate (EVar { name = $1
-                               ; path = $2
-                               }) }
+  | TVAR path { annotate (EVar { path = $1 :: $2 }) }
+
   /** Record */
   | TCLPAR record_defs TCRPAR { annotate (ERecord { contents = $2
                                                  }) }
@@ -310,9 +309,9 @@ path :
 
 
 region :
-  | TREGBOT { Region.Expr.Bot }
-  | TREGVAR { Region.Expr.Var $1 }
-  | region TREGJOIN region { Region.Expr.Join ($1, $3) }
+  | TREGBOT { Region.bottom }
+  | TREGVAR { Region.var $1 }
+  | region TREGJOIN region { Region.join $1 $3 }
   /** Error */
   | error { raise (SyntaxError (symbol_start_pos (), "Expected a region.")) }
 ;
