@@ -125,7 +125,7 @@ and t' =
                  }
 
   (** Type Alias *)
-  | EType     of { alias : Var.t
+  | EType     of { name : Var.t
                  ; typ   : Type.t
                  ; body  : t
                  }

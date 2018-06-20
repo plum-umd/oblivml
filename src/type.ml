@@ -66,6 +66,9 @@ let rec accessible t =
 (* TODO(ins): FIXME *)
 let rec equal t1 t2 = true
 
+(* TODO(ins): FIXME *)
+let rec subst x t e = e
+
 (*
 let rec to_string t =
   match t with

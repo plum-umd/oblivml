@@ -5,6 +5,23 @@ exception TypeError of Section.t Option.t * String.t
 
 type env_t = (Var.t, Type.t Option.t, Var.comparator_witness) Map.t
 
+let env_join tenv1 tenv2 =
+  let type_meet t1 t2 =
+    match t1, t2 with
+    | (None, _) -> None
+    | (_, None) -> None
+    | (Some t1, Some t2) -> assert (Type.equal t1 t2); Some t1
+  in
+
+  Map.merge
+    tenv1
+    tenv2
+    ~f:(fun ~key:_ v ->
+        match v with
+        | `Left v1 -> Some v1
+        | `Right v2 -> Some v2
+        | `Both (v1, v2) -> Some (type_meet v1 v2))
+
 let rec static (tenv : env_t) (e : Expr.t) : Type.t * env_t =
   match e.node with
   | Expr.ELit  l ->
@@ -235,9 +252,66 @@ let rec static (tenv : env_t) (e : Expr.t) : Type.t * env_t =
      | Type.TBase (Type.Base.TBBool, l_guard, r_guard) ->
        let (t_lhs, tenv'') = static tenv' mux.lhs in
        let (t_rhs, tenv''') = static tenv'' mux.rhs in
-       (* TODO(ins): FIXME *)
-       failwith "TODO"
+       (match t_lhs, t_rhs with
+        | (Type.TBase (Type.Base.TBBool, l_lhs, r_lhs), Type.TBase (Type.Base.TBBool, l_rhs, r_rhs)) ->
+          let l' = Label.join l_guard (Label.join l_lhs l_rhs) in
+          let r' = Region.join r_guard (Region.join r_lhs r_rhs) in
+          (Type.TTuple (Type.TBase (Type.Base.TBBool, l', r'), Type.TBase (Type.Base.TBBool, l', r')), tenv''')
+        | (Type.TBase (Type.Base.TBInt, l_lhs, r_lhs), Type.TBase (Type.Base.TBInt, l_rhs, r_rhs)) ->
+          let l' = Label.join l_guard (Label.join l_lhs l_rhs) in
+          let r' = Region.join r_guard (Region.join r_lhs r_rhs) in
+          (Type.TTuple (Type.TBase (Type.Base.TBInt, l', r'), Type.TBase (Type.Base.TBInt, l', r')), tenv''')
+        | (Type.TBase (Type.Base.TBRBool, _, r_lhs), Type.TBase (Type.Base.TBRBool, _, r_rhs)) ->
+          if Region.indep r_guard r_lhs && Region.indep r_guard r_rhs then
+            let l' = Label.secret in
+            let r' = Region.join r_lhs r_rhs in
+            (Type.TTuple (Type.TBase (Type.Base.TBRBool, l', r'), Type.TBase (Type.Base.TBRBool, l', r')), tenv''')
+          else
+            let msg = Printf.sprintf "Arguments of mux are not independent of the guard: ~(%s _||_ %s and %s)." (Region.to_string r_guard) (Region.to_string r_lhs) (Region.to_string r_rhs) in
+            raise (TypeError (e.loc, msg))
+        | (Type.TBase (Type.Base.TBRInt, l_lhs, r_lhs), Type.TBase (Type.Base.TBRInt, l_rhs, r_rhs)) ->
+          if Region.indep r_guard r_lhs && Region.indep r_guard r_rhs then
+            let l' = Label.secret in
+            let r' = Region.join r_lhs r_rhs in
+            (Type.TTuple (Type.TBase (Type.Base.TBRInt, l', r'), Type.TBase (Type.Base.TBRInt, l', r')), tenv''')
+          else
+            let msg = Printf.sprintf "Arguments of mux are not independent of the guard: ~(%s _||_ %s and %s)." (Region.to_string r_guard) (Region.to_string r_lhs) (Region.to_string r_rhs) in
+            raise (TypeError (e.loc, msg))
+        | _ ->
+          let msg = Printf.sprintf "The arguments of this mux are either different types, or non-base types." in
+          raise (TypeError (e.loc, msg)))
      | _ ->
        let msg = Printf.sprintf "The guard of this mux isn't a `bool` type, it has type %s." (Type.to_string t_guard) in
        raise (TypeError (mux.guard.loc, msg)))
-  | _ -> failwith "!!"
+  | Expr.EAbs abs -> failwith "unimplemented"
+  | Expr.ERec recabs -> failwith "unimplemented"
+  | Expr.EApp app ->
+    let (t_lam, tenv') = static tenv app.lam in
+    (match t_lam with
+     | Type.TFun (t_param, t_body) ->
+       let (t_arg, tenv'') = static tenv' app.arg in
+       if Type.equal t_param t_arg then
+         (t_body, tenv'')
+       else
+         let msg = Printf.sprintf "The function parameter has type %s but is being applied to a value of type %s." (Type.to_string t_param) (Type.to_string t_arg) in
+         raise (TypeError (e.loc, msg))
+     | _ ->
+       let msg = Printf.sprintf "The value in function position does not have function type, it's type is %s." (Type.to_string t_lam) in
+       raise (TypeError (app.lam.loc, msg)))
+  | Expr.ELet binding -> failwith "unimplemented"
+  | Expr.EType alias ->
+    static tenv (Type.subst alias.name alias.typ alias.body)
+  | Expr.EIf ite ->
+    let (t_guard, tenv') = static tenv ite.guard in
+    (match t_guard with
+     | Type.TBase (Type.Base.TBBool, l_guard, _) when Label.equal l_guard Label.public ->
+       let (t_thenb, tenv'') = static tenv' ite.thenb in
+       let (t_elseb, tenv''') = static tenv'' ite.elseb in
+       if Type.equal t_thenb t_elseb then
+         (t_thenb, env_join tenv'' tenv''')
+       else
+         let msg = Printf.sprintf "The branches of an if-statement must be the same type. The types are %s and %s." (Type.to_string t_thenb) (Type.to_string t_elseb) in
+         raise (TypeError (e.loc, msg))
+     | _ ->
+       let msg = Printf.sprintf "The guard of an if-statement must be a public boolean. Got: %s." (Type.to_string t_guard) in
+       raise (TypeError (ite.guard.loc, msg)))

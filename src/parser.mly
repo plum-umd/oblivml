@@ -251,7 +251,7 @@ expr :
                                                                ; body  = $8
                                                                }) }
   /** Type Alias */
-  | TTYPE TVAR TEQ typ TIN expr { annotate (EType { alias = $2
+  | TTYPE TVAR TEQ typ TIN expr { annotate (EType { name = $2
                                                   ; typ   = $4
                                                   ; body  = $6
                                                   }) }
