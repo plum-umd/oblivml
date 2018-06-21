@@ -8,9 +8,10 @@ type env_t = (Var.t, Type.t Option.t, Var.comparator_witness) Map.t
 let env_join tenv1 tenv2 =
   let type_meet t1 t2 =
     match t1, t2 with
-    | (None, _) -> None
-    | (_, None) -> None
-    | (Some t1, Some t2) -> assert (Type.equal t1 t2); Some t1
+    | (None    , _)       -> None
+    | (_       , None)    -> None
+    (* TODO(ins): FIXME -- assert should be TypeError or something *)
+    | (Some t1 , Some t2) -> assert (Type.equal t1 t2); Some t1
   in
 
   Map.merge
@@ -18,61 +19,89 @@ let env_join tenv1 tenv2 =
     tenv2
     ~f:(fun ~key:_ v ->
         match v with
-        | `Left v1 -> Some v1
-        | `Right v2 -> Some v2
+        | `Left v1       -> Some v1
+        | `Right v2      -> Some v2
         | `Both (v1, v2) -> Some (type_meet v1 v2))
+
+let rec env_consume path tenv =
+  match path with
+  | [ ] -> failwith "Impossible: forbidden by lexer / parser."
+  | [ x ] ->
+    let x_t = Map.find_exn tenv x in
+    (match x_t with
+     | None ->
+       let msg =
+         Printf.sprintf
+           "The variable %s on the path has already been consumed."
+           (Var.to_string x)
+       in
+       Or_error.error_string msg
+     | Some t ->
+       (match Type.accessible t with
+        | Kind.Universal -> Or_error.return (t, tenv)
+        | Kind.Affine    -> Or_error.return (t, Map.set tenv x None)))
+  | x :: xs ->
+    let x_t = Map.find_exn tenv x in
+    (match x_t with
+     | None ->
+       let msg =
+         Printf.sprintf
+           "The variable %s on the path has already been consumed."
+           (Var.to_string x)
+       in
+       Or_error.error_string msg
+     | Some t ->
+       (match t with
+        | TRecord next -> env_consume xs next
+        | _ ->
+          let msg =
+            Printf.sprintf
+              "The variable %s on the path is not a record type, it has type %s."
+              (Var.to_string x)
+              (Type.to_string t)
+          in
+          Or_error.error_string msg))
 
 let rec static (tenv : env_t) (e : Expr.t) : Type.t * env_t =
   match e.node with
-  | Expr.ELit  l ->
-    (TBase (Literal.to_type l.value, l.label, l.region), tenv)
+  | Expr.ELit l ->
+    let t_lit = Type.TBase (Literal.to_type l.value, l.label, l.region) in
+    (t_lit, tenv)
+
   | Expr.EFlip f ->
     if Region.equiv f.region Region.bottom then
-      raise (TypeError (e.loc, "Region annotation cannot be bottom."))
+      let msg = "Region annotation cannot be bottom." in
+      raise (TypeError (e.loc, msg))
     else
-      (TBase (Type.Base.TBRBool, f.label, f.region), tenv)
-  | Expr.ERnd  r ->
+      let t_flip = Type.TBase (Type.Base.TBRBool, f.label, f.region) in
+      (t_flip, tenv)
+
+  | Expr.ERnd r ->
     if Region.equiv r.region Region.bottom then
-      raise (TypeError (e.loc, "Region annotation cannot be bottom."))
+      let msg = "Region annotation cannot be bottom." in
+      raise (TypeError (e.loc, msg))
     else
-      (TBase (Type.Base.TBRInt, r.label, r.region), tenv)
+      let t_rnd = Type.TBase (Type.Base.TBRInt, r.label, r.region) in
+      (t_rnd, tenv)
+
   | Expr.EVar var ->
-    let rec consume path record =
-      match path with
-      | [ ] -> failwith "Impossible: forbidden by lexer / parser."
-      | [ x ] ->
-        let x_t = Map.find_exn record x in
-        (match x_t with
-         | None ->
-           let msg = Printf.sprintf "The variable %s on the path has already been consumed." (Var.to_string x) in
-           raise (TypeError (e.loc, msg))
-         | Some t ->
-           (match Type.accessible t with
-            | Kind.Universal -> (t, record)
-            | Kind.Affine -> (t, Map.set record x None)))
-      | x :: xs ->
-        let x_t = Map.find_exn record x in
-        (match x_t with
-         | None ->
-           let msg = Printf.sprintf "The variable %s on the path has already been consumed." (Var.to_string x) in
-           raise (TypeError (e.loc, msg))
-         | Some t ->
-           (match t with
-            | TRecord next ->
-              consume xs next
-            | _ ->
-              let msg = Printf.sprintf "The variable %s on the path is not a record type, it has type %s." (Var.to_string x) (Type.to_string t) in
-              raise (TypeError (e.loc, msg))))
-    in
-    consume var.path tenv
+    (match env_consume var.path tenv with
+     | Result.Ok r      -> r
+     | Result.Error err -> raise (TypeError (e.loc, Error.to_string_hum err)))
+
   | Expr.EBUnOp buo ->
     let ret = static tenv buo.arg in
     let (t_arg, tenv') = ret in
     (match t_arg with
      | Type.TBase (Type.Base.TBBool, _, _) -> ret
      | _ ->
-       let msg = Printf.sprintf "Expected type `bool`, but got %s." (Type.to_string t_arg) in
+       let msg =
+         Printf.sprintf
+           "Expected type `bool`, but got %s."
+           (Type.to_string t_arg)
+       in
        raise (TypeError (e.loc, msg)))
+
   | Expr.EBBinOp bbo ->
     let (t_lhs, tenv') = static tenv bbo.lhs in
     (match t_lhs with
@@ -80,21 +109,38 @@ let rec static (tenv : env_t) (e : Expr.t) : Type.t * env_t =
        let (t_rhs, tenv'') = static tenv' bbo.rhs in
        (match t_rhs with
         | Type.TBase (Type.Base.TBBool, l_rhs, r_rhs) ->
-          (Type.TBase (Type.Base.TBBool, Label.join l_lhs l_rhs, Region.join r_lhs r_rhs), tenv'')
+          let l'       = Label.join l_lhs l_rhs in
+          let r'       = Region.join r_lhs r_rhs in
+          let t_bbinop = Type.TBase (Type.Base.TBBool, l', r') in
+          (t_bbinop, tenv'')
         | _ ->
-          let msg = Printf.sprintf "Expected type `bool`, but got %s." (Type.to_string t_rhs) in
+          let msg =
+            Printf.sprintf
+              "Expected type `bool`, but got %s."
+              (Type.to_string t_rhs)
+          in
           raise (TypeError (bbo.rhs.loc, msg)))
      | _ ->
-       let msg = Printf.sprintf "Expected type `bool`, but got %s." (Type.to_string t_lhs) in
+       let msg =
+         Printf.sprintf
+           "Expected type `bool`, but got %s."
+           (Type.to_string t_lhs)
+       in
        raise (TypeError (bbo.lhs.loc, msg)))
+
   | Expr.EAUnOp auo ->
     let ret = static tenv auo.arg in
     let (t_arg, tenv') = ret in
     (match t_arg with
      | Type.TBase (Type.Base.TBInt, _, _) -> ret
      | _ ->
-       let msg = Printf.sprintf "Expected type `int`, but got %s." (Type.to_string t_arg) in
+       let msg =
+         Printf.sprintf
+           "Expected type `int`, but got %s."
+           (Type.to_string t_arg)
+       in
        raise (TypeError (e.loc, msg)))
+
   | Expr.EABinOp abo ->
     let (t_lhs, tenv') = static tenv abo.lhs in
     (match t_lhs with
@@ -102,21 +148,39 @@ let rec static (tenv : env_t) (e : Expr.t) : Type.t * env_t =
        let (t_rhs, tenv'') = static tenv' abo.rhs in
        (match t_rhs with
         | Type.TBase (Type.Base.TBInt, l_rhs, r_rhs) ->
-          (Type.TBase (Type.Base.TBInt, Label.join l_lhs l_rhs, Region.join r_lhs r_rhs), tenv'')
+          let l'       = Label.join l_lhs l_rhs in
+          let r'       = Region.join r_lhs r_rhs in
+          let t_abinop = Type.TBase (Type.Base.TBInt, l', r') in
+          (t_abinop, tenv'')
         | _ ->
-          let msg = Printf.sprintf "Expected type `int`, but got %s." (Type.to_string t_rhs) in
+          let msg =
+            Printf.sprintf
+              "Expected type `int`, but got %s."
+              (Type.to_string t_rhs)
+          in
           raise (TypeError (abo.rhs.loc, msg)))
      | _ ->
-       let msg = Printf.sprintf "Expected type `int`, but got %s." (Type.to_string t_lhs) in
+       let msg =
+         Printf.sprintf
+           "Expected type `int`, but got %s."
+           (Type.to_string t_lhs)
+       in
        raise (TypeError (abo.lhs.loc, msg)))
+
   | Expr.EAUnRel aur ->
     let (t_arg, tenv') = static tenv aur.arg in
     (match t_arg with
      | Type.TBase (Type.Base.TBInt, l_arg, r_arg) ->
-       (Type.TBase (Type.Base.TBBool, l_arg, r_arg), tenv')
+       let t_aunrel = Type.TBase (Type.Base.TBBool, l_arg, r_arg) in
+       (t_aunrel, tenv')
      | _ ->
-       let msg = Printf.sprintf "Expected type `int`, but got %s." (Type.to_string t_arg) in
+       let msg =
+         Printf.sprintf
+           "Expected type `int`, but got %s."
+           (Type.to_string t_arg)
+       in
        raise (TypeError (e.loc, msg)))
+
   | Expr.EABinRel abr ->
     let (t_lhs, tenv') = static tenv abr.lhs in
     (match t_lhs with
@@ -124,18 +188,32 @@ let rec static (tenv : env_t) (e : Expr.t) : Type.t * env_t =
        let (t_rhs, tenv'') = static tenv' abr.rhs in
        (match t_rhs with
         | Type.TBase (Type.Base.TBInt, l_rhs, r_rhs) ->
-          (Type.TBase (Type.Base.TBBool, Label.join l_lhs l_rhs, Region.join r_lhs r_rhs), tenv'')
+          let l'        = Label.join l_lhs l_rhs in
+          let r'        = Region.join r_lhs r_rhs in
+          let t_abinrel = Type.TBase (Type.Base.TBBool, l', r') in
+          (t_abinrel, tenv'')
         | _ ->
-          let msg = Printf.sprintf "Expected type `int`, but got %s." (Type.to_string t_rhs) in
+          let msg =
+            Printf.sprintf
+              "Expected type `int`, but got %s."
+              (Type.to_string t_rhs)
+          in
           raise (TypeError (abr.rhs.loc, msg)))
      | _ ->
-       let msg = Printf.sprintf "Expected type `int`, but got %s." (Type.to_string t_lhs) in
+       let msg =
+         Printf.sprintf
+           "Expected type `int`, but got %s."
+           (Type.to_string t_lhs)
+       in
        raise (TypeError (abr.lhs.loc, msg)))
+
   | Expr.ETuple tup ->
-    let (left, right) = tup.contents in
-    let (t_left, tenv') = static tenv left in
+    let (left, right)     = tup.contents in
+    let (t_left, tenv')   = static tenv left in
     let (t_right, tenv'') = static tenv' right in
-    (Type.TTuple (t_left, t_right), tenv'')
+    let t_tuple           = Type.TTuple (t_left, t_right) in
+    (t_tuple, tenv'')
+
   | Expr.ERecord bindings ->
     let (t_bindings, tenv') =
       List.fold_left
@@ -146,106 +224,241 @@ let rec static (tenv : env_t) (e : Expr.t) : Type.t * env_t =
             (Map.set t_bindings_acc field (Some t), tenv_curr))
     in
     (Type.TRecord t_bindings, tenv')
+
   | Expr.EArrInit arr ->
     let (t_size, tenv') = static tenv arr.size in
     (match t_size with
-     | Type.TBase (Type.Base.TBInt, l_size, r_size) when Label.equal l_size Label.bottom && Region.equiv r_size Region.bottom ->
-       let (t_body, tenv'') = static tenv' arr.init in
-       (match t_body with
-        | Type.TFun (Type.TBase (Type.Base.TBInt, l_body, r_body), t_arr) when Label.equal l_body Label.bottom && Region.equiv r_body Region.bottom ->
-          (TArray t_arr, tenv'')
-        | _ ->
-          let msg = Printf.sprintf "Expected type `int -> _`, but got %s." (Type.to_string t_body) in
-          raise (TypeError (arr.init.loc, msg)))
+     | Type.TBase (Type.Base.TBInt, l_size, r_size) ->
+       if Label.equiv l_size Label.public then
+         if Region.equiv r_size Region.bottom then
+           let (t_body, tenv'') = static tenv' arr.init in
+           (match t_body with
+            | Type.TFun (Type.TBase (Type.Base.TBInt, l_body, r_body), t_arr) ->
+              if Label.equiv l_body Label.public then
+                if Region.equiv r_body Region.bottom then
+                  (TArray t_arr, tenv'')
+                else
+                  let msg =
+                    Printf.sprintf
+                      "The parameter of the initializer must have bottom region. It's region is %s."
+                      (Region.to_string r_body)
+                  in
+                  raise (TypeError (arr.init.loc, msg))
+              else
+                let msg =
+                  Printf.sprintf
+                    "The parameter of the initializer must have public label. It's label is %s."
+                    (Label.to_string l_body)
+                in
+                raise (TypeError (arr.init.loc, msg))
+            | _ ->
+              let msg =
+                Printf.sprintf
+                  "The parameter of the initializer must be an int. It's type is %s."
+                  (Type.to_string t_body)
+              in
+              raise (TypeError (arr.init.loc, msg)))
+         else
+           let msg =
+             Printf.sprintf
+               "The size argument to this array initialization must have bottom region. It's region is %s."
+               (Region.to_string r_size)
+           in
+           raise (TypeError (arr.size.loc, msg))
+       else
+         let msg =
+           Printf.sprintf
+             "The size argument to this array initialization must have public label. It's label is %s."
+             (Label.to_string l_size)
+         in
+         raise (TypeError (arr.size.loc, msg))
      | _ ->
-       let msg = Printf.sprintf "Expected type `int`, but got %s." (Type.to_string t_size) in
+       let msg =
+         Printf.sprintf
+           "The size argument to this array initialization must be an int. It's type is %s."
+           (Type.to_string t_size)
+       in
        raise (TypeError (arr.size.loc, msg)))
+
   | Expr.EArrRead read ->
     let (t_addr, tenv') = static tenv read.addr in
     (match t_addr with
      | Type.TArray t_ele ->
        let (t_idx, tenv'') = static tenv' read.idx in
        (match t_idx with
-        | Type.TBase (Type.Base.TBInt, l_idx, r_idx) when Label.equal l_idx Label.bottom && Region.equiv r_idx Region.bottom ->
-          (match Type.accessible t_ele with
-           | Kind.Universal ->
-             (t_ele, tenv'')
-           | Kind.Affine ->
-             let msg = Printf.sprintf "Attempting to read from %s (affine) array without a write." (Type.to_string t_ele) in
-             raise (TypeError (e.loc, msg)))
+        | Type.TBase (Type.Base.TBInt, l_idx, r_idx) ->
+          if Label.equiv l_idx Label.public then
+            if Region.equiv r_idx Region.bottom then
+              (match Type.accessible t_ele with
+               | Kind.Universal ->
+                 (t_ele, tenv'')
+               | Kind.Affine ->
+                 let msg =
+                   Printf.sprintf
+                     "Attempting to read from %s (affine) array without a write."
+                     (Type.to_string t_ele)
+                 in
+                 raise (TypeError (e.loc, msg)))
+            else
+              let msg =
+                Printf.sprintf
+                  "The index to this array read must have bottom region. It's region is %s."
+                  (Region.to_string r_idx)
+              in
+              raise (TypeError (read.idx.loc, msg))
+          else
+            let msg =
+              Printf.sprintf
+                "The index to this array read must have public label. It's label is %s."
+                (Label.to_string l_idx)
+            in
+            raise (TypeError (read.idx.loc, msg))
         | _ ->
-          let msg = Printf.sprintf "Array indices must be public. Yours has type %s." (Type.to_string t_idx) in
+          let msg =
+            Printf.sprintf
+              "The index to this array read must be an int. It's type is %s."
+              (Type.to_string t_idx)
+          in
           raise (TypeError (read.idx.loc, msg)))
      | _ ->
-       let msg = Printf.sprintf "Expected type `array _`, but got %s." (Type.to_string t_addr) in
+       let msg =
+         Printf.sprintf
+           "This isn't an array. It's type is %s."
+           (Type.to_string t_addr)
+       in
        raise (TypeError (read.addr.loc, msg)))
+
   | Expr.EArrWrite write ->
     let (t_addr, tenv') = static tenv write.addr in
     (match t_addr with
      | Type.TArray t_ele ->
        let (t_idx, tenv'') = static tenv' write.idx in
        (match t_idx with
-        | Type.TBase (Type.Base.TBInt, l_idx, r_idx) when Label.equal l_idx Label.bottom && Region.equiv r_idx Region.bottom ->
-          let (t_value, tenv''') = static tenv'' write.value in
-          if Type.equal t_value t_ele then
-            (t_ele, tenv''')
+        | Type.TBase (Type.Base.TBInt, l_idx, r_idx) ->
+          if Label.equiv l_idx Label.public then
+            if Region.equiv r_idx Region.bottom then
+              let (t_value, tenv''') = static tenv'' write.value in
+              if Type.equal t_value t_ele then
+                (t_ele, tenv''')
+              else
+                let msg =
+                  Printf.sprintf
+                    "Attempting to write a value of type %s to an array of type %s."
+                    (Type.to_string t_value)
+                    (Type.to_string t_ele)
+                in
+                raise (TypeError (write.value.loc, msg))
+            else
+              let msg =
+                Printf.sprintf
+                  "The index to this array write must have bottom region. It's region is %s."
+                  (Region.to_string r_idx)
+              in
+              raise (TypeError (write.idx.loc, msg))
           else
-            let msg = Printf.sprintf "Attempting to write a value of type %s to an array of type %s." (Type.to_string t_value) (Type.to_string t_ele) in
-            raise (TypeError (write.value.loc, msg))
+            let msg =
+              Printf.sprintf
+                "The index to this array write must have public label. It's label is %s."
+                (Label.to_string l_idx)
+            in
+            raise (TypeError (write.idx.loc, msg))
         | _ ->
-          let msg = Printf.sprintf "Array index must be a public int, got %s." (Type.to_string t_idx) in
+          let msg =
+            Printf.sprintf
+              "The index to this array write must be an int. It's type is %s."
+              (Type.to_string t_idx)
+          in
           raise (TypeError (write.idx.loc, msg)))
      | _ ->
-       let msg = Printf.sprintf "Expected type `array _`, but got %s." (Type.to_string t_addr) in
+       let msg =
+         Printf.sprintf
+           "This isn't an array. It's type is %s."
+           (Type.to_string t_addr)
+       in
        raise (TypeError (write.addr.loc, msg)))
+
   | Expr.EArrLen len ->
     let (t_addr, tenv') = static tenv len.addr in
     (match t_addr with
      | Type.TArray _ ->
-       (Type.TBase (Type.Base.TBInt, Label.bottom, Region.bottom), tenv')
+       let l'       = Label.bottom in
+       let r'       = Region.bottom in
+       let t_arrlen = Type.TBase (Type.Base.TBInt, l', r') in
+       (t_arrlen, tenv')
      | _ ->
-       let msg = Printf.sprintf "Expected type `array _`, but got %s." (Type.to_string t_addr) in
+       let msg =
+         Printf.sprintf
+           "This isn't an array. It's type is %s."
+           (Type.to_string t_addr)
+       in
        raise (TypeError (len.addr.loc, msg)))
+
   | Expr.EUse use ->
     (try
        let x_t = Map.find_exn tenv use.arg in
        match x_t with
        | None ->
-         let msg = Printf.sprintf "Attempted to reference the variable %s, which has been consumed." (Var.to_string use.arg) in
+         let msg =
+           Printf.sprintf
+             "Attempted to reference the variable %s, which has been consumed."
+             (Var.to_string use.arg)
+         in
          raise (TypeError (e.loc, msg))
        | Some t ->
          (match t with
-          | Type.TBase (Type.Base.TBRBool, l, r) ->
-            (Type.TBase (Type.Base.TBBool, Label.top, r), tenv)
-          | Type.TBase (Type.Base.TBRInt, l, r) ->
-            (Type.TBase (Type.Base.TBInt, Label.top, r), tenv)
+          | Type.TBase (t_base, l, r) ->
+            let t_use = Type.TBase (t_base, Label.top, r) in
+            (t_use, tenv)
           | _ ->
-            let msg = Printf.sprintf "The variable %s must be type `rbool` or `rint`, but is %s." (Var.to_string use.arg) (Type.to_string t) in
+            let msg =
+              Printf.sprintf
+                "The variable %s must be type rbool or rint, but is %s."
+                (Var.to_string use.arg)
+                (Type.to_string t)
+            in
             raise (TypeError (e.loc, msg)))
      with
      | Not_found ->
-       let msg = Printf.sprintf "The variable %s is undefined." (Var.to_string use.arg) in
+       let msg =
+         Printf.sprintf
+           "The variable %s is undefined."
+           (Var.to_string use.arg)
+       in
        raise (TypeError (e.loc, msg)))
+
   | Expr.EReveal rev ->
     (try
        let x_t = Map.find_exn tenv rev.arg in
        match x_t with
        | None ->
-         let msg = Printf.sprintf "Attempted to reference the variable %s, which has been consumed." (Var.to_string rev.arg) in
+         let msg =
+           Printf.sprintf
+             "Attempted to reference the variable %s, which has been consumed."
+             (Var.to_string rev.arg)
+         in
          raise (TypeError (e.loc, msg))
        | Some t ->
          (match t with
-          | Type.TBase (Type.Base.TBRBool, l, r) ->
-            (Type.TBase (Type.Base.TBBool, Label.bottom, Region.bottom), tenv)
-          | Type.TBase (Type.Base.TBRInt, l, r) ->
-            (Type.TBase (Type.Base.TBInt, Label.bottom, Region.bottom), tenv)
+          | Type.TBase (t_base, l, r) ->
+            let t_reveal = Type.TBase (t_base, Label.bottom, Region.bottom) in
+            (t_reveal, tenv)
           | _ ->
-            let msg = Printf.sprintf "The variable %s must be type `rbool` or `rint`, but is %s." (Var.to_string rev.arg) (Type.to_string t) in
+            let msg =
+              Printf.sprintf
+                "The variable %s must be type rbool or rint, but is %s."
+                (Var.to_string rev.arg)
+                (Type.to_string t)
+            in
             raise (TypeError (e.loc, msg)))
      with
      | Not_found ->
-       let msg = Printf.sprintf "The variable %s is undefined." (Var.to_string rev.arg) in
+       let msg =
+         Printf.sprintf
+           "The variable %s is undefined."
+           (Var.to_string rev.arg)
+       in
        raise (TypeError (e.loc, msg)))
+
   | Expr.EMux mux ->
     let (t_guard, tenv') = static tenv mux.guard in
     (match t_guard with
@@ -283,8 +496,11 @@ let rec static (tenv : env_t) (e : Expr.t) : Type.t * env_t =
      | _ ->
        let msg = Printf.sprintf "The guard of this mux isn't a `bool` type, it has type %s." (Type.to_string t_guard) in
        raise (TypeError (mux.guard.loc, msg)))
-  | Expr.EAbs abs -> failwith "unimplemented"
-  | Expr.ERec recabs -> failwith "unimplemented"
+
+  | Expr.EAbs abs -> failwith "Unimplemented"
+
+  | Expr.ERec recabs -> failwith "Unimplemented"
+
   | Expr.EApp app ->
     let (t_lam, tenv') = static tenv app.lam in
     (match t_lam with
@@ -298,13 +514,16 @@ let rec static (tenv : env_t) (e : Expr.t) : Type.t * env_t =
      | _ ->
        let msg = Printf.sprintf "The value in function position does not have function type, it's type is %s." (Type.to_string t_lam) in
        raise (TypeError (app.lam.loc, msg)))
-  | Expr.ELet binding -> failwith "unimplemented"
+
+  | Expr.ELet binding -> failwith "Unimplemented"
+
   | Expr.EType alias ->
     static tenv (Type.subst alias.name alias.typ alias.body)
+
   | Expr.EIf ite ->
     let (t_guard, tenv') = static tenv ite.guard in
     (match t_guard with
-     | Type.TBase (Type.Base.TBBool, l_guard, _) when Label.equal l_guard Label.public ->
+     | Type.TBase (Type.Base.TBBool, l_guard, _) when Label.equiv l_guard Label.public ->
        let (t_thenb, tenv'') = static tenv' ite.thenb in
        let (t_elseb, tenv''') = static tenv'' ite.elseb in
        if Type.equal t_thenb t_elseb then
