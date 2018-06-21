@@ -10,16 +10,16 @@ type t =
 
 let rec to_string p =
   match p with
-  | XWild  -> "_"
-  | XVar v -> Var.to_string v
+  | XWild           -> "_"
+  | XVar v          -> Var.to_string v
   | XTuple (p1, p2) -> Printf.sprintf "(%s, %s)" (to_string p1) (to_string p2)
-  | XRecord fs -> Printf.sprintf "{ %s }"
-                    (String.concat
-                       ~sep:", "
-                       (List.map
-                          fs
-                          ~f:(fun (k, v) ->
-                              Printf.sprintf "%s = %s" (Var.to_string k) (to_string v))))
-  | XAscr (p, t) -> Printf.sprintf "(%s : %s)" (to_string p) (Type.to_string t)
+  | XRecord fs      -> Printf.sprintf "{ %s }"
+                         (String.concat
+                            ~sep:", "
+                            (List.map
+                               fs
+                               ~f:(fun (k, v) ->
+                                   Printf.sprintf "%s = %s" (Var.to_string k) (to_string v))))
+  | XAscr (p, t)    -> Printf.sprintf "(%s : %s)" (to_string p) (Type.to_string t)
 
 let pp f p = Format.pp_print_text f (to_string p)

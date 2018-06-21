@@ -1,7 +1,7 @@
 (** Lexer and Parser for OblivML *)
-module Lexer = Lexer
+module Lexer  = Lexer
 module Parser = Parser
-module Util = Util
+module Util   = Util
 
 (** Type Syntax *)
 module Kind = Kind
@@ -11,23 +11,22 @@ module Type = Type
 
 (** Literals *)
 module Literal = Literal
-module Label = Label
-module Region = Region
+module Label   = Label
+module Region  = Region
 
 (** Variables *)
 module Var = Var
 
 (** Boolean and Arithmetic Primitives *)
 module Boolean = Boolean
-module Arith = Arith
+module Arith   = Arith
 
 (** Patterns *)
 module Pattern = Pattern
 
 (** Expressions *)
 module Section = Section
-module Expr = Expr
+module Expr    = Expr
 
 (** Static Semantics *)
-module Constrs = Constrs
 module Static = Static

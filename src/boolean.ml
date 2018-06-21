@@ -1,20 +1,16 @@
 open Core
 open Stdio
 
-module Un =
-  struct
-    module Op =
-      struct
-        type t =
-          | Not
-      end
+module Un = struct
+  module Op = struct
+    type t =
+      | Not
   end
+end
 
-module Bin =
-  struct
-    module Op =
-      struct
-        type t =
-          | And
-      end
+module Bin = struct
+  module Op = struct
+    type t =
+      | And
   end
+end

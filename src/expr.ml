@@ -50,7 +50,7 @@ and t' =
                  }
 
   (** Unary Arithmetic Relation *)
-  | EAUnRel   of { rel  : Arith.Un.Rel.t
+  | EAUnRel   of { rel : Arith.Un.Rel.t
                  ; arg : t
                  }
 
@@ -126,8 +126,8 @@ and t' =
 
   (** Type Alias *)
   | EType     of { name : Var.t
-                 ; typ   : Type.t
-                 ; body  : t
+                 ; typ  : Type.t
+                 ; body : t
                  }
 
   (** Conditional *)

@@ -161,11 +161,11 @@ rule token = parse
   | var        { TVAR (Var.Var (lexeme lexbuf)) }
 
   (** Comment *)
-  | "(*"        { comment (lexeme_start_p lexbuf) lexbuf; token lexbuf }
-  | "*)"        { raise (SyntaxError (lexeme_start_p lexbuf, "This comment terminator has no corresponding initiator.")) }
+  | "(*"       { comment (lexeme_start_p lexbuf) lexbuf; token lexbuf }
+  | "*)"       { raise (SyntaxError (lexeme_start_p lexbuf, "This comment terminator has no corresponding initiator.")) }
 
   (** EOF *)
-  | eof         { TEOF }
+  | eof        { TEOF }
 
   (** Failure *)
   | _           { raise (SyntaxError (lexeme_start_p lexbuf, "Unexpected token.")) }
