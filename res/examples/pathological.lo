@@ -1,6 +1,7 @@
 (** This file demonstrates a pathology in the type system.
 
-    The revelation on line 10 fails to typecheck, but is actually safe. *)
+    The revelation on line 12 fails to typecheck, but the actual
+    revelation on line 16 is safe because `v` is uniformly distributed. *)
 
 (* `s` is our secret *)
 let s = true<secret, _|_> in

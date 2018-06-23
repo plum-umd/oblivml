@@ -23,6 +23,23 @@ let env_join tenv1 tenv2 =
         | `Right v2      -> Some v2
         | `Both (v1, v2) -> Some (type_meet v1 v2))
 
+let env_update tenv1 tenv2 =
+  Map.merge
+    tenv1
+    tenv2
+    ~f:(fun ~key:_ v ->
+        match v with
+        | `Left v1       -> Some v1
+        | `Right v2      -> Some v2
+        | `Both (v1, v2) -> Some v2)
+
+let env_clear tenv vars =
+  List.fold
+    vars
+    ~init:tenv
+    ~f:(fun m x ->
+        Map.remove m x)
+
 let rec env_consume path tenv =
   match path with
   | [ ] -> failwith "Impossible: forbidden by lexer / parser."
@@ -407,7 +424,19 @@ let rec static (tenv : env_t) (e : Expr.t) : Type.t * env_t =
        | Some t ->
          (match t with
           | Type.TBase (t_base, l, r) ->
-            let t_use = Type.TBase (t_base, Label.top, r) in
+            let t_base' =
+              (match t_base with
+               | Type.Base.TBRBool -> Type.Base.TBBool
+               | Type.Base.TBRInt  -> Type.Base.TBInt
+               | _ ->
+                 let msg =
+                   Printf.sprintf
+                     "Attempted to secret-coerce (use) variable with non-random type. It's type is %s."
+                     (Type.to_string t)
+                 in
+                 raise (TypeError (e.loc, msg)))
+            in
+            let t_use = Type.TBase (t_base', Label.top, r) in
             (t_use, tenv)
           | _ ->
             let msg =
@@ -440,7 +469,19 @@ let rec static (tenv : env_t) (e : Expr.t) : Type.t * env_t =
        | Some t ->
          (match t with
           | Type.TBase (t_base, l, r) ->
-            let t_reveal = Type.TBase (t_base, Label.bottom, Region.bottom) in
+            let t_base' =
+              (match t_base with
+               | Type.Base.TBRBool -> Type.Base.TBBool
+               | Type.Base.TBRInt  -> Type.Base.TBInt
+               | _ ->
+                 let msg =
+                   Printf.sprintf
+                     "Attempted to public-coerce (reveal) variable with non-random type. It's type is %s."
+                     (Type.to_string t)
+                 in
+                 raise (TypeError (e.loc, msg)))
+            in
+            let t_reveal = Type.TBase (t_base', Label.bottom, Region.bottom) in
             (t_reveal, tenv)
           | _ ->
             let msg =
@@ -467,34 +508,61 @@ let rec static (tenv : env_t) (e : Expr.t) : Type.t * env_t =
        let (t_rhs, tenv''') = static tenv'' mux.rhs in
        (match t_lhs, t_rhs with
         | (Type.TBase (Type.Base.TBBool, l_lhs, r_lhs), Type.TBase (Type.Base.TBBool, l_rhs, r_rhs)) ->
-          let l' = Label.join l_guard (Label.join l_lhs l_rhs) in
-          let r' = Region.join r_guard (Region.join r_lhs r_rhs) in
-          (Type.TTuple (Type.TBase (Type.Base.TBBool, l', r'), Type.TBase (Type.Base.TBBool, l', r')), tenv''')
+          let l'        = Label.join l_guard (Label.join l_lhs l_rhs) in
+          let r'        = Region.join r_guard (Region.join r_lhs r_rhs) in
+          let t_mux_arg = Type.TBase (Type.Base.TBBool, l', r') in
+          let t_mux     = Type.TTuple (t_mux_arg, t_mux_arg) in
+          (t_mux, tenv''')
         | (Type.TBase (Type.Base.TBInt, l_lhs, r_lhs), Type.TBase (Type.Base.TBInt, l_rhs, r_rhs)) ->
-          let l' = Label.join l_guard (Label.join l_lhs l_rhs) in
-          let r' = Region.join r_guard (Region.join r_lhs r_rhs) in
-          (Type.TTuple (Type.TBase (Type.Base.TBInt, l', r'), Type.TBase (Type.Base.TBInt, l', r')), tenv''')
+          let l'        = Label.join l_guard (Label.join l_lhs l_rhs) in
+          let r'        = Region.join r_guard (Region.join r_lhs r_rhs) in
+          let t_mux_arg = Type.TBase (Type.Base.TBInt, l', r') in
+          let t_mux     = Type.TTuple (t_mux_arg, t_mux_arg) in
+          (t_mux, tenv''')
         | (Type.TBase (Type.Base.TBRBool, _, r_lhs), Type.TBase (Type.Base.TBRBool, _, r_rhs)) ->
           if Region.indep r_guard r_lhs && Region.indep r_guard r_rhs then
-            let l' = Label.secret in
-            let r' = Region.join r_lhs r_rhs in
-            (Type.TTuple (Type.TBase (Type.Base.TBRBool, l', r'), Type.TBase (Type.Base.TBRBool, l', r')), tenv''')
+            let l'        = Label.secret in
+            let r'        = Region.join r_lhs r_rhs in
+            let t_mux_arg = Type.TBase (Type.Base.TBRBool, l', r') in
+            let t_mux     = Type.TTuple (t_mux_arg, t_mux_arg) in
+            (t_mux, tenv''')
           else
-            let msg = Printf.sprintf "Arguments of mux are not independent of the guard: ~(%s _||_ %s and %s)." (Region.to_string r_guard) (Region.to_string r_lhs) (Region.to_string r_rhs) in
+            let msg =
+              Printf.sprintf
+                "Arguments of mux are not independent of the guard: ~(%s _||_ %s and %s)."
+                (Region.to_string r_guard)
+                (Region.to_string r_lhs)
+                (Region.to_string r_rhs)
+            in
             raise (TypeError (e.loc, msg))
         | (Type.TBase (Type.Base.TBRInt, l_lhs, r_lhs), Type.TBase (Type.Base.TBRInt, l_rhs, r_rhs)) ->
           if Region.indep r_guard r_lhs && Region.indep r_guard r_rhs then
-            let l' = Label.secret in
-            let r' = Region.join r_lhs r_rhs in
-            (Type.TTuple (Type.TBase (Type.Base.TBRInt, l', r'), Type.TBase (Type.Base.TBRInt, l', r')), tenv''')
+            let l'        = Label.secret in
+            let r'        = Region.join r_lhs r_rhs in
+            let t_mux_arg = Type.TBase (Type.Base.TBRInt, l', r') in
+            let t_mux     = Type.TTuple (t_mux_arg, t_mux_arg) in
+            (t_mux, tenv''')
           else
-            let msg = Printf.sprintf "Arguments of mux are not independent of the guard: ~(%s _||_ %s and %s)." (Region.to_string r_guard) (Region.to_string r_lhs) (Region.to_string r_rhs) in
+            let msg =
+              Printf.sprintf
+                "Arguments of mux are not independent of the guard: ~(%s _||_ %s and %s)."
+                (Region.to_string r_guard)
+                (Region.to_string r_lhs)
+                (Region.to_string r_rhs)
+            in
             raise (TypeError (e.loc, msg))
         | _ ->
-          let msg = Printf.sprintf "The arguments of this mux are either different types, or non-base types." in
+          let msg =
+            Printf.sprintf
+              "The arguments of this mux are either different types, or non-base types."
+          in
           raise (TypeError (e.loc, msg)))
      | _ ->
-       let msg = Printf.sprintf "The guard of this mux isn't a `bool` type, it has type %s." (Type.to_string t_guard) in
+       let msg =
+         Printf.sprintf
+           "The guard of this mux isn't a `bool` type, it has type %s."
+           (Type.to_string t_guard)
+       in
        raise (TypeError (mux.guard.loc, msg)))
 
   | Expr.EAbs abs -> failwith "Unimplemented"
@@ -509,13 +577,55 @@ let rec static (tenv : env_t) (e : Expr.t) : Type.t * env_t =
        if Type.equal t_param t_arg then
          (t_body, tenv'')
        else
-         let msg = Printf.sprintf "The function parameter has type %s but is being applied to a value of type %s." (Type.to_string t_param) (Type.to_string t_arg) in
+         let msg =
+           Printf.sprintf
+             "The function parameter has type %s but is being applied to a value of type %s."
+             (Type.to_string t_param)
+             (Type.to_string t_arg)
+         in
          raise (TypeError (e.loc, msg))
      | _ ->
-       let msg = Printf.sprintf "The value in function position does not have function type, it's type is %s." (Type.to_string t_lam) in
+       let msg =
+         Printf.sprintf
+           "The value in function position does not have function type, it's type is %s."
+           (Type.to_string t_lam)
+       in
        raise (TypeError (app.lam.loc, msg)))
 
-  | Expr.ELet binding -> failwith "Unimplemented"
+  | Expr.ELet binding ->
+    let (t_value, tenv')      = static tenv binding.value in
+    let plus                  =
+      try
+        Pattern.get_binders binding.pat t_value
+      with
+      | Pattern.PatternError ->
+        let msg =
+          Printf.sprintf
+            "The pattern of this let-binding does not match the type of the bound expression. The type is %s."
+            (Type.to_string t_value)
+        in
+        raise (TypeError (e.loc, msg))
+      | Pattern.BindingError (x, err_msg) ->
+        let msg =
+          Printf.sprintf
+            "There was an error during binding (%s): %s"
+            (Var.to_string x)
+            err_msg
+        in
+        raise (TypeError (e.loc, msg))
+      | Pattern.AscriptionError (t_claim, t_actual) ->
+        let msg =
+          Printf.sprintf
+            "The type of an ascription in this let-binding does not match the type of the bound expression: %s <> %s."
+            (Type.to_string t_claim)
+            (Type.to_string t_actual)
+        in
+        raise (TypeError (e.loc, msg))
+    in
+    let tenv'_plus            = env_update tenv' plus in
+    let (t_body, tenv''_plus) = static tenv'_plus binding.body in
+    let tenv''                = env_clear tenv''_plus (Map.keys plus) in
+    (t_body, tenv'')
 
   | Expr.EType alias ->
     static tenv (Type.subst alias.name alias.typ alias.body)

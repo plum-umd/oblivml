@@ -168,10 +168,11 @@ rule token = parse
   | eof        { TEOF }
 
   (** Failure *)
-  | _           { raise (SyntaxError (lexeme_start_p lexbuf, "Unexpected token.")) }
+  | _          { raise (SyntaxError (lexeme_start_p lexbuf, "Unexpected token.")) }
 
 and comment pos_inner = parse
   | "(*"    { comment (lexeme_start_p lexbuf) lexbuf; comment pos_inner lexbuf }
   | "*)"    { () }
   | eof     { raise (SyntaxError (pos_inner, "This comment initiator has no corresponding terminator.")) }
   | newline { new_line lexbuf; comment pos_inner lexbuf }
+  | _       { comment pos_inner lexbuf }
