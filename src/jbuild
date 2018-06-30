@@ -3,7 +3,8 @@
 (library
   ((name oblivml)
    (libraries (core stdio))
-   (preprocess (pps (ppx_jane)))))
+   (preprocess (pps (ppx_jane)))
+   (flags (:standard -short-paths))))
 
 (ocamllex
   (lexer))
