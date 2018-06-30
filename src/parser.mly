@@ -24,17 +24,30 @@
                                            ; body  = acc
                                            }))
 
-  let curry_rec name patterns body =
+  let curry_rec name patterns body t_ret =
     match patterns with
     | []      -> failwith "Impossible: forbidden by lexer / parser."
-    | p :: ps -> annotate (ERec { name  = name
-                                ; param = p
-                                ; body  = List.fold_right ps
-                                                          ~init:body
-                                                          ~f:(fun pat acc -> annotate (EAbs { param = pat
-                                                                                            ; body  = acc
-                                                                                            }))
-                                })
+    | p :: ps ->
+      let (body_rec, t_rec) =
+        List.fold_right
+          ps
+          ~init:(body, t_ret)
+          ~f:(fun pat (body_acc, t_acc) ->
+              let body_rec' = annotate (EAbs { param = pat
+                                             ; body  = body_acc
+                                             })
+              in
+              match pat with
+              | Pattern.XAscr (_, t_param) ->
+                let t_acc' = Type.TFun (t_param, t_acc) in
+                (body_rec', t_acc')
+              | _ -> raise (SyntaxError (symbol_start_pos (), "Recursive functions must have type annotated parameters.")))
+      in
+      annotate (ERec { name  = name
+                     ; param = p
+                     ; body  = body_rec
+                     ; t_ret = t_rec
+                     })
 %}
 
 /***************************
@@ -213,7 +226,7 @@ expr :
   /** Tuple */
   | TLPAR expr TCOMMA expr TRPAR { annotate (ETuple { contents = ($2, $4)
                                                     }) }
-    /** Array */
+  /** Array */
   | TARRAY TLPAR expr TRPAR TSLPAR expr TSRPAR { annotate (EArrInit { size = $3
                                                                     ; init = $6
                                                                     }) }
@@ -232,9 +245,9 @@ expr :
                                                                    ; rhs   = $7
                                                                    }) }
   /** Abstraction */
-  | TFUN patterns TRARROW expr { curry $2 $4 }
+  | TFUN patterns TDOT expr { curry $2 $4 }
   /** Recursive Abstraction */
-  | TFUN TVAR TDOT patterns TRARROW expr { curry_rec $2 $4 $6 }
+  | TFUN TREC TVAR patterns TCOLON typ TDOT expr { curry_rec $3 $4 $8 $6 }
   /** Application (Stage) */
   | fexpr { $1 }
   /** Binding */
@@ -246,10 +259,10 @@ expr :
                                                           ; value = curry $3 $5
                                                           ; body  = $7
                                                           }) }
-  | TLET TREC TVAR patterns TEQ expr TIN expr { annotate (ELet { pat   = Pattern.XVar $3
-                                                               ; value = curry_rec $3 $4 $6
-                                                               ; body  = $8
-                                                               }) }
+  | TLET TREC TVAR patterns TCOLON typ TEQ expr TIN expr { annotate (ELet { pat = Pattern.XVar $3
+                                                                          ; value = curry_rec $3 $4 $8 $6
+                                                                          ; body  = $10
+                                                                          }) }
   /** Type Alias */
   | TTYPE TVAR TEQ typ TIN expr { annotate (EType { name = $2
                                                   ; typ   = $4

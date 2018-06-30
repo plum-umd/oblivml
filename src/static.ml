@@ -565,9 +565,89 @@ let rec static (tenv : env_t) (e : Expr.t) : Type.t * env_t =
        in
        raise (TypeError (mux.guard.loc, msg)))
 
-  | Expr.EAbs abs -> failwith "Unimplemented"
+  | Expr.EAbs abs ->
+    (match abs.param with
+     | Pattern.XAscr (p, t_param) ->
+       let plus =
+         try
+           Pattern.get_binders p t_param
+         with
+         | Pattern.PatternError ->
+           let msg =
+             Printf.sprintf
+               "The pattern of the parameter does not match the ascribed type. The type is %s."
+               (Type.to_string t_param)
+           in
+           raise (TypeError (e.loc, msg))
+         | Pattern.BindingError (x, err_msg) ->
+           let msg =
+             Printf.sprintf
+               "There was an error during binding (%s): %s."
+               (Var.to_string x)
+               err_msg
+           in
+           raise (TypeError (e.loc, msg))
+         | Pattern.AscriptionError (t_claim, t_actual) ->
+           let msg =
+             Printf.sprintf
+               "The type of an ascription in this parameter does not match the type of the toplevel ascription: %s <> %s."
+               (Type.to_string t_claim)
+               (Type.to_string t_actual)
+           in
+           raise (TypeError (e.loc, msg))
+       in
+       let tenv_plus            = env_update tenv plus in
+       let (t_body, tenv'_plus) = static tenv_plus abs.body in
+       let tenv'                = env_clear tenv'_plus (Map.keys plus) in
+       (Type.TFun (t_param, t_body), tenv')
+     | _ ->
+       let msg =
+         Printf.sprintf
+           "Function parameters must be annotated with their type."
+       in
+       raise (TypeError (e.loc, msg)))
 
-  | Expr.ERec recabs -> failwith "Unimplemented"
+  | Expr.ERec recabs ->
+    (match recabs.param with
+     | Pattern.XAscr (p, t_param) ->
+       let plus =
+         try
+           Map.set (Pattern.get_binders p t_param) recabs.name (Some (Type.TFun (t_param, recabs.t_ret)))
+         with
+         | Pattern.PatternError ->
+           let msg =
+             Printf.sprintf
+               "The pattern of the parameter does not match the ascribed type. The type is %s."
+               (Type.to_string t_param)
+           in
+           raise (TypeError (e.loc, msg))
+         | Pattern.BindingError (x, err_msg) ->
+           let msg =
+             Printf.sprintf
+               "There was an error during binding (%s): %s."
+               (Var.to_string x)
+               err_msg
+           in
+           raise (TypeError (e.loc, msg))
+         | Pattern.AscriptionError (t_claim, t_actual) ->
+           let msg =
+             Printf.sprintf
+               "The type of an ascription in this parameter does not match the type of the toplevel ascription: %s <> %s."
+               (Type.to_string t_claim)
+               (Type.to_string t_actual)
+           in
+           raise (TypeError (e.loc, msg))
+       in
+       let tenv_plus            = env_update tenv plus in
+       let (t_body, tenv'_plus) = static tenv_plus recabs.body in
+       let tenv'                = env_clear tenv'_plus (Map.keys plus) in
+       (Type.TFun (t_param, t_body), tenv')
+     | _ ->
+       let msg =
+         Printf.sprintf
+           "Function parameters must be annotated with their type."
+       in
+       raise (TypeError (e.loc, msg)))
 
   | Expr.EApp app ->
     let (t_lam, tenv') = static tenv app.lam in
@@ -593,8 +673,8 @@ let rec static (tenv : env_t) (e : Expr.t) : Type.t * env_t =
        raise (TypeError (app.lam.loc, msg)))
 
   | Expr.ELet binding ->
-    let (t_value, tenv')      = static tenv binding.value in
-    let plus                  =
+    let (t_value, tenv') = static tenv binding.value in
+    let plus             =
       try
         Pattern.get_binders binding.pat t_value
       with

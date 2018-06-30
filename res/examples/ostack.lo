@@ -4,7 +4,7 @@
  ** Utility Functions **
  ***********************)
 
-let rec div_2 (n : int<public, _|_>) =
+let rec div_2 (n : int<public, _|_>) : int<public, _|_> =
   if n = 0<public, _|_> then
     0<public, _|_>
   else

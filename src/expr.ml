@@ -111,6 +111,7 @@ and t' =
   | ERec      of { name  : Var.t
                  ; param : Pattern.t
                  ; body  : t
+                 ; t_ret : Type.t
                  }
 
   (** Application *)
