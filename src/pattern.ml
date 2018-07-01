@@ -63,4 +63,14 @@ let rec to_string p =
                                    Printf.sprintf "%s = %s" (Var.to_string k) (to_string v))))
   | XAscr (p, t)    -> Printf.sprintf "(%s : %s)" (to_string p) (Type.to_string t)
 
+type alias_t = (Var.t, Type.t, Var.comparator_witness) Map.t
+
+let rec resolve_alias p talias =
+  match p with
+  | XWild  -> p
+  | XVar _ -> p
+  | XTuple (p1, p2) -> XTuple (resolve_alias p1 talias, resolve_alias p2 talias)
+  | XRecord fs -> XRecord (List.map fs ~f:(fun (x, p') -> (x, resolve_alias p' talias)))
+  | XAscr (p', t) -> XAscr (resolve_alias p' talias, Type.resolve_alias t talias)
+
 let pp f p = Format.pp_print_text f (to_string p)

@@ -346,7 +346,7 @@ patterns :
   | pattern { [ $1 ] }
   | pattern patterns { $1 :: $2 }
   /** Error */
-  | error { raise (SyntaxError (symbol_start_pos (), "Expected patterns.")) }
+  | error { let p = symbol_start_pos () in Printf.printf "%s" (Position.to_string p); raise (SyntaxError (p, "Expected patterns.")) }
 ;
 
 pattern :

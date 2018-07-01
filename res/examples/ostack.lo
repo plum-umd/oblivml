@@ -11,14 +11,14 @@ let rec div_2 (n : int<public, _|_>) : int<public, _|_> =
     div_2 (n - 2<public, _|_>) + 1<public, _|_>
 in
 
-let rec log_2 (n : int<public, _|_>) =
+let rec log_2 (n : int<public, _|_>) : int<public, _|_> =
   if n = 1<public, _|_> then
     0<public, _|_>
   else
     log_2 (div_2 n) + 1<public, _|_>
 in
 
-let rec pow_2 (n : int<public, _|_>) =
+let rec pow_2 (n : int<public, _|_>) : int<public, _|_> =
   if n = 0<public, _|_> then
     1<public, _|_>
   else
@@ -104,12 +104,12 @@ in
  ******************)
 
 let trivial_init (size : int<public, _|_>) =
-  array(size)[fun _ -> default_block]
+  array(size)[fun (_ : int<public, _|_>) . default_block]
 in
 
 let trivial_rr' (toram : trivial_oram) (idx : int<secret, `r0>) =
   let len = length(toram) in
-  let rec iterate (i : int<public, _|_>) (acc : block) =
+  let rec iterate (i : int<public, _|_>) (acc : block) : block =
     if i = len then
       acc
     else
@@ -129,7 +129,7 @@ in
 
 let trivial_add' (toram : trivial_oram) (blk : block) =
   let len = length(toram) in
-  let rec iterate (i : int<public, _|_>) (acc : block) =
+  let rec iterate (i : int<public, _|_>) (acc : block) : block =
     if i = len then
       ()<public, _|_>
     else
@@ -151,7 +151,7 @@ in
 
 let trivial_pop' (toram : trivial_oram) =
   let len = length(toram) in
-  let rec iterate (i : int<public, _|_>) (acc : block) =
+  let rec iterate (i : int<public, _|_>) (acc : block) : block =
     if i = len then
       acc
     else
@@ -174,13 +174,13 @@ in
       This ensures that the tree is full and has at least depth 2. *)
 
 let nr_init (size : int<public, _|_>) (bucket_size : int<public, _|_>) =
-  array(size)[fun _ -> trivial_init bucket_size]
+  array(size)[fun _ . trivial_init bucket_size]
 in
 
 let nr_rr' (nroram : nr_oram) (idx : int<secret, `r0>) (tag : int<public, _|_>) =
   let len = length(nroram) in
   let depth = log_2 (len + 1<public, _|_>) in
-  let rec iterate (level : int<public, _|_>) (acc : nr_data) =
+  let rec iterate (level : int<public, _|_>) (acc : nr_data) : nr_data =
     if level = depth then
       acc
     else
@@ -220,7 +220,7 @@ in
 let nr_evict (nroram : nr_oram) =
   let len = length(nroram) in
   let depth = log_2 (len + 1<public, _|_>) in
-  let rec iterate (level : int<public, _|_>) =
+  let rec iterate (level : int<public, _|_>) : unit<public, _|_> =
     if level = depth - 1<public, _|_> then
       ()<public, _|_>
     else
@@ -263,8 +263,8 @@ in
 
 let ostack_init (size : int<public, _|_>) (bucket_size : int<public, _|_>) =
   { oram  = nr_init size bucket_size
-  ; idx_r = array(1<public, _|_>)[fun _ -> 0<secret, `r0>]
-  ; tag_r = array(1<public, _|_>)[fun _ -> rnd<secret, `r0>]
+  ; idx_r = array(1<public, _|_>)[fun _ . 0<secret, `r0>]
+  ; tag_r = array(1<public, _|_>)[fun _ . rnd<secret, `r0>]
   }
 in
 

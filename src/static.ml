@@ -5,6 +5,20 @@ exception TypeError of Section.t Option.t * String.t
 
 type env_t = (Var.t, Type.t Option.t, Var.comparator_witness) Map.t
 
+let maybe_t_to_string m_t =
+  match m_t with
+  | None -> "*"
+  | Some t -> Type.to_string t
+
+let env_to_string tenv =
+  Printf.sprintf "{ %s }"
+    (String.concat
+       (List.map
+          (Map.to_alist tenv)
+          ~f:(fun (k, v) ->
+            Printf.sprintf "%s -> %s" (Var.to_string k) (maybe_t_to_string v)))
+       ~sep:"; ")
+
 let env_join tenv1 tenv2 =
   let type_meet t1 t2 =
     match t1, t2 with
@@ -58,6 +72,7 @@ let rec env_consume path tenv =
         | Kind.Universal -> Or_error.return (t, tenv)
         | Kind.Affine    -> Or_error.return (t, Map.set tenv x None)))
   | x :: xs ->
+    Printf.printf "%s\n" (String.concat (List.map xs ~f:Var.to_string) ~sep:".");
     let x_t = Map.find_exn tenv x in
     (match x_t with
      | None ->
@@ -69,7 +84,10 @@ let rec env_consume path tenv =
        Or_error.error_string msg
      | Some t ->
        (match t with
-        | TRecord next -> env_consume xs next
+        | TRecord next ->
+          let open Or_error.Monad_infix in
+          env_consume xs next >>= fun (t_ret, next_env) ->
+          Or_error.return (t_ret, Map.set tenv ~key:x ~data:(Some (TRecord next_env)))
         | _ ->
           let msg =
             Printf.sprintf
@@ -79,7 +97,10 @@ let rec env_consume path tenv =
           in
           Or_error.error_string msg))
 
-let rec static (tenv : env_t) (e : Expr.t) : Type.t * env_t =
+type alias_t = (Var.t, Type.t, Var.comparator_witness) Map.t
+
+let rec static (tenv : env_t) (talias : alias_t) (e : Expr.t) : Type.t * env_t =
+  Printf.printf "%s\n" (env_to_string tenv);
   match e.node with
   | Expr.ELit l ->
     let t_lit = Type.TBase (Literal.to_type l.value, l.label, l.region) in
@@ -107,7 +128,7 @@ let rec static (tenv : env_t) (e : Expr.t) : Type.t * env_t =
      | Result.Error err -> raise (TypeError (e.loc, Error.to_string_hum err)))
 
   | Expr.EBUnOp buo ->
-    let ret = static tenv buo.arg in
+    let ret = static tenv talias buo.arg in
     let (t_arg, tenv') = ret in
     (match t_arg with
      | Type.TBase (Type.Base.TBBool, _, _) -> ret
@@ -120,10 +141,10 @@ let rec static (tenv : env_t) (e : Expr.t) : Type.t * env_t =
        raise (TypeError (e.loc, msg)))
 
   | Expr.EBBinOp bbo ->
-    let (t_lhs, tenv') = static tenv bbo.lhs in
+    let (t_lhs, tenv') = static tenv talias bbo.lhs in
     (match t_lhs with
      | Type.TBase (Type.Base.TBBool, l_lhs, r_lhs) ->
-       let (t_rhs, tenv'') = static tenv' bbo.rhs in
+       let (t_rhs, tenv'') = static tenv' talias bbo.rhs in
        (match t_rhs with
         | Type.TBase (Type.Base.TBBool, l_rhs, r_rhs) ->
           let l'       = Label.join l_lhs l_rhs in
@@ -146,7 +167,7 @@ let rec static (tenv : env_t) (e : Expr.t) : Type.t * env_t =
        raise (TypeError (bbo.lhs.loc, msg)))
 
   | Expr.EAUnOp auo ->
-    let ret = static tenv auo.arg in
+    let ret = static tenv talias auo.arg in
     let (t_arg, tenv') = ret in
     (match t_arg with
      | Type.TBase (Type.Base.TBInt, _, _) -> ret
@@ -159,10 +180,10 @@ let rec static (tenv : env_t) (e : Expr.t) : Type.t * env_t =
        raise (TypeError (e.loc, msg)))
 
   | Expr.EABinOp abo ->
-    let (t_lhs, tenv') = static tenv abo.lhs in
+    let (t_lhs, tenv') = static tenv talias abo.lhs in
     (match t_lhs with
      | Type.TBase (Type.Base.TBInt, l_lhs, r_lhs) ->
-       let (t_rhs, tenv'') = static tenv' abo.rhs in
+       let (t_rhs, tenv'') = static tenv' talias abo.rhs in
        (match t_rhs with
         | Type.TBase (Type.Base.TBInt, l_rhs, r_rhs) ->
           let l'       = Label.join l_lhs l_rhs in
@@ -185,7 +206,7 @@ let rec static (tenv : env_t) (e : Expr.t) : Type.t * env_t =
        raise (TypeError (abo.lhs.loc, msg)))
 
   | Expr.EAUnRel aur ->
-    let (t_arg, tenv') = static tenv aur.arg in
+    let (t_arg, tenv') = static tenv talias aur.arg in
     (match t_arg with
      | Type.TBase (Type.Base.TBInt, l_arg, r_arg) ->
        let t_aunrel = Type.TBase (Type.Base.TBBool, l_arg, r_arg) in
@@ -199,10 +220,10 @@ let rec static (tenv : env_t) (e : Expr.t) : Type.t * env_t =
        raise (TypeError (e.loc, msg)))
 
   | Expr.EABinRel abr ->
-    let (t_lhs, tenv') = static tenv abr.lhs in
+    let (t_lhs, tenv') = static tenv talias abr.lhs in
     (match t_lhs with
      | Type.TBase (Type.Base.TBInt, l_lhs, r_lhs) ->
-       let (t_rhs, tenv'') = static tenv' abr.rhs in
+       let (t_rhs, tenv'') = static tenv' talias abr.rhs in
        (match t_rhs with
         | Type.TBase (Type.Base.TBInt, l_rhs, r_rhs) ->
           let l'        = Label.join l_lhs l_rhs in
@@ -226,8 +247,8 @@ let rec static (tenv : env_t) (e : Expr.t) : Type.t * env_t =
 
   | Expr.ETuple tup ->
     let (left, right)     = tup.contents in
-    let (t_left, tenv')   = static tenv left in
-    let (t_right, tenv'') = static tenv' right in
+    let (t_left, tenv')   = static tenv talias left in
+    let (t_right, tenv'') = static tenv' talias right in
     let t_tuple           = Type.TTuple (t_left, t_right) in
     (t_tuple, tenv'')
 
@@ -237,18 +258,18 @@ let rec static (tenv : env_t) (e : Expr.t) : Type.t * env_t =
         bindings.contents
         ~init:(Map.empty (module Var), tenv)
         ~f:(fun (t_bindings_acc, env_acc) (field, binding) ->
-            let (t, tenv_curr) = static env_acc binding in
+            let (t, tenv_curr) = static env_acc talias binding in
             (Map.set t_bindings_acc field (Some t), tenv_curr))
     in
     (Type.TRecord t_bindings, tenv')
 
   | Expr.EArrInit arr ->
-    let (t_size, tenv') = static tenv arr.size in
+    let (t_size, tenv') = static tenv talias arr.size in
     (match t_size with
      | Type.TBase (Type.Base.TBInt, l_size, r_size) ->
        if Label.equiv l_size Label.public then
          if Region.equiv r_size Region.bottom then
-           let (t_body, tenv'') = static tenv' arr.init in
+           let (t_body, tenv'') = static tenv' talias arr.init in
            (match t_body with
             | Type.TFun (Type.TBase (Type.Base.TBInt, l_body, r_body), t_arr) ->
               if Label.equiv l_body Label.public then
@@ -298,10 +319,10 @@ let rec static (tenv : env_t) (e : Expr.t) : Type.t * env_t =
        raise (TypeError (arr.size.loc, msg)))
 
   | Expr.EArrRead read ->
-    let (t_addr, tenv') = static tenv read.addr in
+    let (t_addr, tenv') = static tenv talias read.addr in
     (match t_addr with
      | Type.TArray t_ele ->
-       let (t_idx, tenv'') = static tenv' read.idx in
+       let (t_idx, tenv'') = static tenv' talias read.idx in
        (match t_idx with
         | Type.TBase (Type.Base.TBInt, l_idx, r_idx) ->
           if Label.equiv l_idx Label.public then
@@ -346,15 +367,15 @@ let rec static (tenv : env_t) (e : Expr.t) : Type.t * env_t =
        raise (TypeError (read.addr.loc, msg)))
 
   | Expr.EArrWrite write ->
-    let (t_addr, tenv') = static tenv write.addr in
+    let (t_addr, tenv') = static tenv talias write.addr in
     (match t_addr with
      | Type.TArray t_ele ->
-       let (t_idx, tenv'') = static tenv' write.idx in
+       let (t_idx, tenv'') = static tenv' talias write.idx in
        (match t_idx with
         | Type.TBase (Type.Base.TBInt, l_idx, r_idx) ->
           if Label.equiv l_idx Label.public then
             if Region.equiv r_idx Region.bottom then
-              let (t_value, tenv''') = static tenv'' write.value in
+              let (t_value, tenv''') = static tenv'' talias write.value in
               if Type.equal t_value t_ele then
                 (t_ele, tenv''')
               else
@@ -395,7 +416,7 @@ let rec static (tenv : env_t) (e : Expr.t) : Type.t * env_t =
        raise (TypeError (write.addr.loc, msg)))
 
   | Expr.EArrLen len ->
-    let (t_addr, tenv') = static tenv len.addr in
+    let (t_addr, tenv') = static tenv talias len.addr in
     (match t_addr with
      | Type.TArray _ ->
        let l'       = Label.bottom in
@@ -501,11 +522,11 @@ let rec static (tenv : env_t) (e : Expr.t) : Type.t * env_t =
        raise (TypeError (e.loc, msg)))
 
   | Expr.EMux mux ->
-    let (t_guard, tenv') = static tenv mux.guard in
+    let (t_guard, tenv') = static tenv talias mux.guard in
     (match t_guard with
      | Type.TBase (Type.Base.TBBool, l_guard, r_guard) ->
-       let (t_lhs, tenv'') = static tenv' mux.lhs in
-       let (t_rhs, tenv''') = static tenv'' mux.rhs in
+       let (t_lhs, tenv'') = static tenv' talias mux.lhs in
+       let (t_rhs, tenv''') = static tenv'' talias mux.rhs in
        (match t_lhs, t_rhs with
         | (Type.TBase (Type.Base.TBBool, l_lhs, r_lhs), Type.TBase (Type.Base.TBBool, l_rhs, r_rhs)) ->
           let l'        = Label.join l_guard (Label.join l_lhs l_rhs) in
@@ -566,7 +587,8 @@ let rec static (tenv : env_t) (e : Expr.t) : Type.t * env_t =
        raise (TypeError (mux.guard.loc, msg)))
 
   | Expr.EAbs abs ->
-    (match abs.param with
+    let param' = Pattern.resolve_alias abs.param talias in
+    (match param' with
      | Pattern.XAscr (p, t_param) ->
        let plus =
          try
@@ -597,7 +619,7 @@ let rec static (tenv : env_t) (e : Expr.t) : Type.t * env_t =
            raise (TypeError (e.loc, msg))
        in
        let tenv_plus            = env_update tenv plus in
-       let (t_body, tenv'_plus) = static tenv_plus abs.body in
+       let (t_body, tenv'_plus) = static tenv_plus talias abs.body in
        let tenv'                = env_clear tenv'_plus (Map.keys plus) in
        (Type.TFun (t_param, t_body), tenv')
      | _ ->
@@ -608,11 +630,13 @@ let rec static (tenv : env_t) (e : Expr.t) : Type.t * env_t =
        raise (TypeError (e.loc, msg)))
 
   | Expr.ERec recabs ->
-    (match recabs.param with
+    let param' = Pattern.resolve_alias recabs.param talias in
+    let t_ret' = Type.resolve_alias recabs.t_ret talias in
+    (match param' with
      | Pattern.XAscr (p, t_param) ->
        let plus =
          try
-           Map.set (Pattern.get_binders p t_param) recabs.name (Some (Type.TFun (t_param, recabs.t_ret)))
+           Map.set (Pattern.get_binders p t_param) recabs.name (Some (Type.TFun (t_param, t_ret')))
          with
          | Pattern.PatternError ->
            let msg =
@@ -639,7 +663,7 @@ let rec static (tenv : env_t) (e : Expr.t) : Type.t * env_t =
            raise (TypeError (e.loc, msg))
        in
        let tenv_plus            = env_update tenv plus in
-       let (t_body, tenv'_plus) = static tenv_plus recabs.body in
+       let (t_body, tenv'_plus) = static tenv_plus talias recabs.body in
        let tenv'                = env_clear tenv'_plus (Map.keys plus) in
        (Type.TFun (t_param, t_body), tenv')
      | _ ->
@@ -650,10 +674,10 @@ let rec static (tenv : env_t) (e : Expr.t) : Type.t * env_t =
        raise (TypeError (e.loc, msg)))
 
   | Expr.EApp app ->
-    let (t_lam, tenv') = static tenv app.lam in
+    let (t_lam, tenv') = static tenv talias app.lam in
     (match t_lam with
      | Type.TFun (t_param, t_body) ->
-       let (t_arg, tenv'') = static tenv' app.arg in
+       let (t_arg, tenv'') = static tenv' talias app.arg in
        if Type.equal t_param t_arg then
          (t_body, tenv'')
        else
@@ -673,10 +697,11 @@ let rec static (tenv : env_t) (e : Expr.t) : Type.t * env_t =
        raise (TypeError (app.lam.loc, msg)))
 
   | Expr.ELet binding ->
-    let (t_value, tenv') = static tenv binding.value in
+    let pat' = Pattern.resolve_alias binding.pat talias in
+    let (t_value, tenv') = static tenv talias binding.value in
     let plus             =
       try
-        Pattern.get_binders binding.pat t_value
+        Pattern.get_binders pat' t_value
       with
       | Pattern.PatternError ->
         let msg =
@@ -703,19 +728,19 @@ let rec static (tenv : env_t) (e : Expr.t) : Type.t * env_t =
         raise (TypeError (e.loc, msg))
     in
     let tenv'_plus            = env_update tenv' plus in
-    let (t_body, tenv''_plus) = static tenv'_plus binding.body in
+    let (t_body, tenv''_plus) = static tenv'_plus talias binding.body in
     let tenv''                = env_clear tenv''_plus (Map.keys plus) in
     (t_body, tenv'')
 
   | Expr.EType alias ->
-    static tenv (Type.subst alias.name alias.typ alias.body)
+    static tenv (Map.set talias ~key:alias.name ~data:alias.typ) alias.body
 
   | Expr.EIf ite ->
-    let (t_guard, tenv') = static tenv ite.guard in
+    let (t_guard, tenv') = static tenv talias ite.guard in
     (match t_guard with
      | Type.TBase (Type.Base.TBBool, l_guard, _) when Label.equiv l_guard Label.public ->
-       let (t_thenb, tenv'') = static tenv' ite.thenb in
-       let (t_elseb, tenv''') = static tenv'' ite.elseb in
+       let (t_thenb, tenv'') = static tenv' talias ite.thenb in
+       let (t_elseb, tenv''') = static tenv'' talias ite.elseb in
        if Type.equal t_thenb t_elseb then
          (t_thenb, env_join tenv'' tenv''')
        else

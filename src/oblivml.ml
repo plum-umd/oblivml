@@ -25,6 +25,7 @@ module Arith   = Arith
 module Pattern = Pattern
 
 (** Expressions *)
+module Position = Position
 module Section = Section
 module Expr    = Expr
 
