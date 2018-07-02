@@ -55,9 +55,11 @@ let env_clear tenv vars =
         Map.remove m x)
 
 let rec env_consume path tenv =
+  (* Printf.printf "%s\n" (env_to_string tenv); *)
   match path with
   | [ ] -> failwith "Impossible: forbidden by lexer / parser."
   | [ x ] ->
+    (* Printf.printf "%s\n" (Var.to_string x); *)
     let x_t = Map.find_exn tenv x in
     (match x_t with
      | None ->
@@ -72,7 +74,7 @@ let rec env_consume path tenv =
         | Kind.Universal -> Or_error.return (t, tenv)
         | Kind.Affine    -> Or_error.return (t, Map.set tenv x None)))
   | x :: xs ->
-    Printf.printf "%s\n" (String.concat (List.map xs ~f:Var.to_string) ~sep:".");
+    (* Printf.printf "%s\n" (Var.to_string x); *)
     let x_t = Map.find_exn tenv x in
     (match x_t with
      | None ->
@@ -97,10 +99,64 @@ let rec env_consume path tenv =
           in
           Or_error.error_string msg))
 
+let option_to_string m f =
+  match m with
+  | None -> "*"
+  | Some v -> f v
+
+let rec mux_merge loc l_guard r_guard t1 t2 =
+
+  match t1, t2 with
+  | Type.TBase (tb1, l1, r1), Type.TBase (tb2, l2, r2) when Type.Base.equal tb1 tb2 ->
+    let kind = Type.Base.accessible tb1 in
+    if Kind.equal kind Kind.Affine then
+      if Region.indep r_guard r1 && Region.indep r_guard r2 then
+        let l' = Label.secret in
+        let r' = Region.join r1 r2 in
+        Printf.printf "%s @ %s\n" (Region.to_string r') (option_to_string loc Section.to_string);
+        Type.TBase (tb1, l', r')
+      else
+        let msg =
+              Printf.sprintf
+                "Arguments of mux are not independent of the guard: ~(%s _||_ %s and %s)."
+                (Region.to_string r_guard)
+                (Region.to_string r1)
+                (Region.to_string r2)
+        in
+        raise (TypeError (loc, msg))
+    else
+      let l' = Label.join l_guard (Label.join l1 l2) in
+      let r' = Region.join r_guard (Region.join r1 r2) in
+      Printf.printf "%s @ %s\n" (Region.to_string r') (option_to_string loc Section.to_string);
+      Type.TBase (tb1, l', r')
+  | Type.TTuple (t11, t12), Type.TTuple (t21, t22) ->
+    let t1_ret = mux_merge loc l_guard r_guard t11 t21 in
+    let t2_ret = mux_merge loc l_guard r_guard t12 t22 in
+    Type.TTuple (t1_ret, t2_ret)
+  | Type.TRecord bs1, Type.TRecord bs2 ->
+    Type.TRecord (List.fold
+                    (Map.keys bs1)
+                    ~init:(Map.empty (module Var))
+                    ~f:(fun acc key ->
+                        let m_t1' = Map.find_exn bs1 key in
+                        let m_t2' = Map.find_exn bs2 key in
+                        let d =
+                          match m_t1', m_t2' with
+                          | None, None -> None
+                          | Some t1', Some t2' -> Some (mux_merge loc l_guard r_guard t1' t2')
+                          | _ ->
+                            let msg =
+                              Printf.sprintf
+                                "Fields of records being muxed do not match."
+                            in
+                            raise (TypeError (loc, msg))
+                        in
+                        Map.set acc ~key:key ~data:d))
+  | _ -> failwith "Unimplemented"
+
 type alias_t = (Var.t, Type.t, Var.comparator_witness) Map.t
 
 let rec static (tenv : env_t) (talias : alias_t) (e : Expr.t) : Type.t * env_t =
-  Printf.printf "%s\n" (env_to_string tenv);
   match e.node with
   | Expr.ELit l ->
     let t_lit = Type.TBase (Literal.to_type l.value, l.label, l.region) in
@@ -527,57 +583,8 @@ let rec static (tenv : env_t) (talias : alias_t) (e : Expr.t) : Type.t * env_t =
      | Type.TBase (Type.Base.TBBool, l_guard, r_guard) ->
        let (t_lhs, tenv'') = static tenv' talias mux.lhs in
        let (t_rhs, tenv''') = static tenv'' talias mux.rhs in
-       (match t_lhs, t_rhs with
-        | (Type.TBase (Type.Base.TBBool, l_lhs, r_lhs), Type.TBase (Type.Base.TBBool, l_rhs, r_rhs)) ->
-          let l'        = Label.join l_guard (Label.join l_lhs l_rhs) in
-          let r'        = Region.join r_guard (Region.join r_lhs r_rhs) in
-          let t_mux_arg = Type.TBase (Type.Base.TBBool, l', r') in
-          let t_mux     = Type.TTuple (t_mux_arg, t_mux_arg) in
-          (t_mux, tenv''')
-        | (Type.TBase (Type.Base.TBInt, l_lhs, r_lhs), Type.TBase (Type.Base.TBInt, l_rhs, r_rhs)) ->
-          let l'        = Label.join l_guard (Label.join l_lhs l_rhs) in
-          let r'        = Region.join r_guard (Region.join r_lhs r_rhs) in
-          let t_mux_arg = Type.TBase (Type.Base.TBInt, l', r') in
-          let t_mux     = Type.TTuple (t_mux_arg, t_mux_arg) in
-          (t_mux, tenv''')
-        | (Type.TBase (Type.Base.TBRBool, _, r_lhs), Type.TBase (Type.Base.TBRBool, _, r_rhs)) ->
-          if Region.indep r_guard r_lhs && Region.indep r_guard r_rhs then
-            let l'        = Label.secret in
-            let r'        = Region.join r_lhs r_rhs in
-            let t_mux_arg = Type.TBase (Type.Base.TBRBool, l', r') in
-            let t_mux     = Type.TTuple (t_mux_arg, t_mux_arg) in
-            (t_mux, tenv''')
-          else
-            let msg =
-              Printf.sprintf
-                "Arguments of mux are not independent of the guard: ~(%s _||_ %s and %s)."
-                (Region.to_string r_guard)
-                (Region.to_string r_lhs)
-                (Region.to_string r_rhs)
-            in
-            raise (TypeError (e.loc, msg))
-        | (Type.TBase (Type.Base.TBRInt, l_lhs, r_lhs), Type.TBase (Type.Base.TBRInt, l_rhs, r_rhs)) ->
-          if Region.indep r_guard r_lhs && Region.indep r_guard r_rhs then
-            let l'        = Label.secret in
-            let r'        = Region.join r_lhs r_rhs in
-            let t_mux_arg = Type.TBase (Type.Base.TBRInt, l', r') in
-            let t_mux     = Type.TTuple (t_mux_arg, t_mux_arg) in
-            (t_mux, tenv''')
-          else
-            let msg =
-              Printf.sprintf
-                "Arguments of mux are not independent of the guard: ~(%s _||_ %s and %s)."
-                (Region.to_string r_guard)
-                (Region.to_string r_lhs)
-                (Region.to_string r_rhs)
-            in
-            raise (TypeError (e.loc, msg))
-        | _ ->
-          let msg =
-            Printf.sprintf
-              "The arguments of this mux are either different types, or non-base types."
-          in
-          raise (TypeError (e.loc, msg)))
+       let t_ret = mux_merge e.loc l_guard r_guard t_lhs t_rhs in
+       (Type.TTuple (t_ret, t_ret), tenv''')
      | _ ->
        let msg =
          Printf.sprintf

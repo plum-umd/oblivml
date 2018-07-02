@@ -46,14 +46,28 @@ type t =
   | TArray  of t
   | TFun    of t * t
 
+let maybe_to_string m f =
+  match m with
+  | None   -> "*"
+  | Some v -> f v
+
 let rec to_string t =
   match t with
   | TBase (tb, l, r) -> Printf.sprintf "%s<%s, %s>" (Base.to_string tb) (Label.to_string l) (Region.to_string r)
   | TAlias ta        -> Var.to_string ta
   | TTuple (t1, t2)  -> Printf.sprintf "(%s * %s)" (to_string t1) (to_string t2)
+  | TRecord bs       ->
+    Printf.sprintf "{ %s }"
+      (String.concat
+         (List.map
+            (Map.to_alist bs)
+            ~f:(fun (k, v) ->
+                Printf.sprintf "%s : %s"
+                  (Var.to_string k)
+                  (maybe_to_string v to_string)))
+         ~sep:"; ")
   | TArray t         -> Printf.sprintf "%s array" (to_string t)
   | TFun (t1, t2)    -> Printf.sprintf "%s -> %s" (to_string t1) (to_string t2)
-  | _                -> ""
 
 let rec accessible t =
   match t with
