@@ -6,7 +6,7 @@ let s = true<secret, _|_> in
 let (r0, r1) = (flip<secret, `r0>, flip<secret, `r1>) in
 (* If the secret, `s`, is true then `z` is `r0`, otherwise it's `r1` *)
 let (z, _) = mux (s, r0, r1) in
-(* Revealing the resulting coing, `z`, is fine *)
+(* Revealing the resulting coin, `z`, is fine *)
 let _ = reveal(z) in
 (* Revealing either of the original coins is bad *)
 reveal(r0)
