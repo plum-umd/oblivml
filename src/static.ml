@@ -110,7 +110,7 @@ let rec mux_merge loc l_guard r_guard t1 t2 =
   | Type.TBase (tb1, l1, r1), Type.TBase (tb2, l2, r2) when Type.Base.equal tb1 tb2 ->
     let kind = Type.Base.accessible tb1 in
     if Kind.equal kind Kind.Affine then
-      if Region.indep r_guard r1 && Region.indep r_guard r2 then
+      if Region.leq r_guard r1 && Region.leq r_guard r2 then
         let l' = Label.secret in
         let r' = Region.join r1 r2 in
         Printf.printf "%s @ %s\n" (Region.to_string r') (option_to_string loc Section.to_string);
@@ -118,7 +118,7 @@ let rec mux_merge loc l_guard r_guard t1 t2 =
       else
         let msg =
               Printf.sprintf
-                "Arguments of mux are not independent of the guard: ~(%s _||_ %s and %s)."
+                "Arguments of mux are not leq the guard: ~(%s < %s and %s)."
                 (Region.to_string r_guard)
                 (Region.to_string r1)
                 (Region.to_string r2)

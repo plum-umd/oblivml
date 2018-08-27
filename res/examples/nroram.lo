@@ -30,7 +30,7 @@ in
  ***********************)
 
 (** Data user is storing *)
-type user_data = rint<secret, `r1>
+type user_data = rint<secret, `r0 \/ `r1>
 in
 
 (** Data the NRORAM is storing *)
@@ -60,7 +60,7 @@ in
  ********************)
 
 let default_user_data =
-  rnd<secret, `r1>
+  rnd<secret, `r0 \/ `r1>
 in
 
 let default_nr_data =
