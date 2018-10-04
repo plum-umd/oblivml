@@ -1,0 +1,8 @@
+(library
+  (name oblivml)
+  (libraries core stdio)
+  (preprocess (pps ppx_jane)))
+
+(ocamllex lexer)
+
+(ocamlyacc parser)
