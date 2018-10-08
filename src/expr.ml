@@ -96,6 +96,14 @@ and t' =
   | EReveal   of { arg : Var.t
                  }
 
+  (** Random -> Non-Uniform *)
+  | ETrust    of { arg : Var.t
+                 }
+
+  (** Non-Uniform -> Random *)
+  | EProve    of { arg : Var.t
+                 }
+
   (** Mux *)
   | EMux      of { guard : t
                  ; lhs   : t

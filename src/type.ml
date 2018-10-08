@@ -9,6 +9,8 @@ struct
     | TBInt
     | TBRBool
     | TBRInt
+    | TBNUBool
+    | TBNUInt
 
   let equal tb1 tb2 = tb1 = tb2
 
@@ -23,19 +25,33 @@ struct
 
   let to_string tb =
     match tb with
-    | TBUnit  -> "unit"
-    | TBBool  -> "bool"
-    | TBInt   -> "int"
-    | TBRBool -> "rbool"
-    | TBRInt  -> "rint"
+    | TBUnit   -> "unit"
+    | TBBool   -> "bool"
+    | TBInt    -> "int"
+    | TBRBool  -> "rbool"
+    | TBRInt   -> "rint"
+    | TBNUBool -> "nubool"
+    | TBNUInt  -> "nuint"
 
   let accessible tb =
     match tb with
-    | TBUnit  -> Kind.Universal
-    | TBBool  -> Kind.Universal
-    | TBInt   -> Kind.Universal
-    | TBRBool -> Kind.Affine
-    | TBRInt  -> Kind.Affine
+    | TBUnit   -> Kind.Universal
+    | TBBool   -> Kind.Universal
+    | TBInt    -> Kind.Universal
+    | TBRBool  -> Kind.Affine
+    | TBRInt   -> Kind.Affine
+    | TBNUBool -> Kind.Affine
+    | TBNUInt  -> Kind.Affine
+
+  let safe tb =
+    match tb with
+    | TBUnit   -> true
+    | TBBool   -> true
+    | TBInt    -> true
+    | TBRBool  -> true
+    | TBRInt   -> true
+    | TBNUBool -> false
+    | TBNUInt  -> false
 end
 
 type t =

@@ -125,6 +125,12 @@
 /** Random -> Public (Reveal) */
 %token               TREVEAL
 
+/** Random -> Non-Uniform */
+%token               TTRUST
+
+/** Non-Uniform -> Random */
+%token               TPROVE
+
 /** Mux */
 %token               TMUX
 
@@ -311,6 +317,12 @@ atexpr :
   /** Reveal */
   | TREVEAL TLPAR TVAR TRPAR { annotate (EReveal { arg = $3
                                                  }) }
+  /** Trust */
+  | TTRUST TLPAR TVAR TRPAR { annotate (ETrust { arg = $3
+                                               }) }
+  /** Prove */
+  | TPROVE TLPAR TVAR TRPAR { annotate (EProve { arg = $3
+                                               }) }
   /** Grouping */
   | TLPAR expr TRPAR { $2 }
 ;

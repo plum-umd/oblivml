@@ -122,6 +122,12 @@ rule token = parse
   (** Random -> Public (Reveal) *)
   | "reveal"   { TREVEAL }
 
+  (** Random -> Non-Uniform *)
+  | "trust"    { TTRUST }
+
+  (** Non-Uniform -> Random *)
+  | "prove"    { TPROVE }
+
   (** Mux *)
   | "mux"      { TMUX }
 

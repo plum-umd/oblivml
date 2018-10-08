@@ -109,16 +109,16 @@ let rec mux_merge loc l_guard r_guard t1 t2 =
   match t1, t2 with
   | Type.TBase (tb1, l1, r1), Type.TBase (tb2, l2, r2) when Type.Base.equal tb1 tb2 ->
     let kind = Type.Base.accessible tb1 in
-    if Kind.equal kind Kind.Affine then
-      if Region.leq r_guard r1 && Region.leq r_guard r2 then
+    if Kind.equal kind Kind.Affine && Type.Base.safe tb1 then
+      if Region.lt r_guard r1 && Region.lt r_guard r2 then
         let l' = Label.secret in
         let r' = Region.join r1 r2 in
-        Printf.printf "%s @ %s\n" (Region.to_string r') (option_to_string loc Section.to_string);
+        (* Printf.printf "%s @ %s\n" (Region.to_string r') (option_to_string loc Section.to_string); *)
         Type.TBase (tb1, l', r')
       else
         let msg =
               Printf.sprintf
-                "Arguments of mux are not leq the guard: ~(%s < %s and %s)."
+                "Arguments of mux are not lt the guard: ~(%s < %s and %s)."
                 (Region.to_string r_guard)
                 (Region.to_string r1)
                 (Region.to_string r2)
@@ -574,6 +574,96 @@ let rec static (tenv : env_t) (talias : alias_t) (e : Expr.t) : Type.t * env_t =
          Printf.sprintf
            "The variable %s is undefined."
            (Var.to_string rev.arg)
+       in
+       raise (TypeError (e.loc, msg)))
+
+  | Expr.ETrust trust ->
+    (try
+       let x_t = Map.find_exn tenv trust.arg in
+       match x_t with
+       | None ->
+         let msg =
+           Printf.sprintf
+             "Attempted to reference the variable %s, which has been consumed."
+             (Var.to_string trust.arg)
+         in
+         raise (TypeError (e.loc, msg))
+       | Some t ->
+         (match t with
+          | Type.TBase (t_base, l, r) ->
+            let t_base' =
+              (match t_base with
+               | Type.Base.TBRBool -> Type.Base.TBNUBool
+               | Type.Base.TBRInt  -> Type.Base.TBNUInt
+               | _ ->
+                 let msg =
+                   Printf.sprintf
+                     "Attemptd to non-uniform coerce (trust) variable with non-random type. It's type is %s."
+                     (Type.to_string t)
+                 in
+                 raise (TypeError (e.loc, msg)))
+            in
+            let t_trust = Type.TBase (t_base', l, r) in
+            (t_trust, tenv)
+          | _ ->
+            let msg =
+              Printf.sprintf
+                "The variable %s must be type rbool or rint, but is %s."
+                (Var.to_string trust.arg)
+                (Type.to_string t)
+            in
+            raise (TypeError (e.loc, msg)))
+     with
+     | Not_found ->
+       let msg =
+         Printf.sprintf
+           "The variable %s is undefined."
+           (Var.to_string trust.arg)
+       in
+       raise (TypeError (e.loc, msg)))
+
+  | Expr.EProve prove ->
+    (try
+       let x_t = Map.find_exn tenv prove.arg in
+       match x_t with
+       | None ->
+         let msg =
+           Printf.sprintf
+             "Attempted to reference the variable %s, which has been consumed."
+             (Var.to_string prove.arg)
+         in
+         raise (TypeError (e.loc, msg))
+       | Some t ->
+         (match t with
+          | Type.TBase (t_base, l, r) ->
+            let t_base' =
+              (match t_base with
+               | Type.Base.TBNUBool -> Type.Base.TBRBool
+               | Type.Base.TBNUInt  -> Type.Base.TBRInt
+               | _ ->
+                 let msg =
+                   Printf.sprintf
+                     "Attemptd to random coerce (prove) variable with non-NU type. It's type is %s."
+                     (Type.to_string t)
+                 in
+                 raise (TypeError (e.loc, msg)))
+            in
+            let t_prove = Type.TBase (t_base', l, r) in
+            (t_prove, tenv)
+          | _ ->
+            let msg =
+              Printf.sprintf
+                "The variable %s must be type nubool or nuint, but is %s."
+                (Var.to_string prove.arg)
+                (Type.to_string t)
+            in
+            raise (TypeError (e.loc, msg)))
+     with
+     | Not_found ->
+       let msg =
+         Printf.sprintf
+           "The variable %s is undefined."
+           (Var.to_string prove.arg)
        in
        raise (TypeError (e.loc, msg)))
 
