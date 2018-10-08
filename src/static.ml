@@ -60,44 +60,61 @@ let rec env_consume path tenv =
   | [ ] -> failwith "Impossible: forbidden by lexer / parser."
   | [ x ] ->
     (* Printf.printf "%s\n" (Var.to_string x); *)
-    let x_t = Map.find_exn tenv x in
-    (match x_t with
-     | None ->
-       let msg =
-         Printf.sprintf
-           "The variable %s on the path has already been consumed."
-           (Var.to_string x)
-       in
-       Or_error.error_string msg
-     | Some t ->
-       (match Type.accessible t with
-        | Kind.Universal -> Or_error.return (t, tenv)
-        | Kind.Affine    -> Or_error.return (t, Map.set tenv x None)))
-  | x :: xs ->
-    (* Printf.printf "%s\n" (Var.to_string x); *)
-    let x_t = Map.find_exn tenv x in
-    (match x_t with
-     | None ->
-       let msg =
-         Printf.sprintf
-           "The variable %s on the path has already been consumed."
-           (Var.to_string x)
-       in
-       Or_error.error_string msg
-     | Some t ->
-       (match t with
-        | TRecord next ->
-          let open Or_error.Monad_infix in
-          env_consume xs next >>= fun (t_ret, next_env) ->
-          Or_error.return (t_ret, Map.set tenv ~key:x ~data:(Some (TRecord next_env)))
-        | _ ->
+    (try
+       let x_t = Map.find_exn tenv x in
+       (match x_t with
+        | None ->
           let msg =
             Printf.sprintf
-              "The variable %s on the path is not a record type, it has type %s."
+              "The variable %s on the path has already been consumed."
               (Var.to_string x)
-              (Type.to_string t)
           in
-          Or_error.error_string msg))
+          Or_error.error_string msg
+        | Some t ->
+          (match Type.accessible t with
+           | Kind.Universal -> Or_error.return (t, tenv)
+           | Kind.Affine    -> Or_error.return (t, Map.set tenv x None)))
+     with
+     | Not_found ->
+       let msg =
+         Printf.sprintf
+           "The variable %s on the path does not exist."
+           (Var.to_string x)
+       in
+       Or_error.error_string msg)
+  | x :: xs ->
+    (* Printf.printf "%s\n" (Var.to_string x); *)
+    (try
+       let x_t = Map.find_exn tenv x in
+       (match x_t with
+        | None ->
+          let msg =
+            Printf.sprintf
+              "The variable %s on the path has already been consumed."
+              (Var.to_string x)
+          in
+          Or_error.error_string msg
+        | Some t ->
+          (match t with
+           | TRecord next ->
+             let open Or_error.Monad_infix in
+             env_consume xs next >>= fun (t_ret, next_env) ->
+             Or_error.return (t_ret, Map.set tenv ~key:x ~data:(Some (TRecord next_env)))
+           | _ ->
+             let msg =
+               Printf.sprintf
+                 "The variable %s on the path is not a record type, it has type %s."
+                 (Var.to_string x)
+                 (Type.to_string t)
+             in
+             Or_error.error_string msg))
+     with
+     | Not_found ->
+       let msg = Printf.sprintf
+           "The variable %s on the path does not exist."
+           (Var.to_string x)
+       in
+       Or_error.error_string msg)
 
 let option_to_string m f =
   match m with
@@ -127,7 +144,7 @@ let rec mux_merge loc l_guard r_guard t1 t2 =
     else
       let l' = Label.join l_guard (Label.join l1 l2) in
       let r' = Region.join r_guard (Region.join r1 r2) in
-      Printf.printf "%s @ %s\n" (Region.to_string r') (option_to_string loc Section.to_string);
+      (* Printf.printf "%s @ %s\n" (Region.to_string r') (option_to_string loc Section.to_string); *)
       Type.TBase (tb1, l', r')
   | Type.TTuple (t11, t12), Type.TTuple (t21, t22) ->
     let t1_ret = mux_merge loc l_guard r_guard t11 t21 in
@@ -147,7 +164,7 @@ let rec mux_merge loc l_guard r_guard t1 t2 =
                           | _ ->
                             let msg =
                               Printf.sprintf
-                                "Fields of records being muxed do not match."
+                                "Fields of records being muxed mismatch on consumption."
                             in
                             raise (TypeError (loc, msg))
                         in

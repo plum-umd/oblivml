@@ -116,7 +116,7 @@ let rec equal t1 t2 =
   | _ -> false
 
 let rec resolve_alias t talias =
-  Printf.printf "%s" (to_string t);
+  (* Printf.printf "%s" (to_string t); *)
   match t with
   | TBase _   -> t
   | TAlias x -> resolve_alias (Map.find_exn talias x) talias

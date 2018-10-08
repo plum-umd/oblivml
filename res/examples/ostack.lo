@@ -30,29 +30,29 @@ in
  ***********************)
 
 (** Data user is storing *)
-type user_data = int<secret, _|_>
+type user_data = int<secret, `r0>
 in
 
 (** Data the OStack is storing *)
 type ostack_data =
-  { is_some    : bool<secret, _|_>
-  ; ostack_tag : rint<secret, `r0>
+  { is_some    : bool<secret, `r0>
+  ; ostack_tag : rint<secret, `r0 \/ `r1>
   ; ostack_val : user_data
   }
 in
 
 (** Data the NRORAM is storing *)
 type nr_data =
-  { is_some : bool<secret, _|_>
-  ; nr_tag  : int<secret, `r0>
+  { is_some : bool<secret, `r0>
+  ; nr_tag  : int<secret, `r0 \/ `r1>
   ; nr_val  : ostack_data
   }
 in
 
 (** Blocks in the trivial ORAM *)
 type block =
-  { is_some : bool<secret, _|_>
-  ; idx     : int<secret, _|_>
+  { is_some : bool<secret, `r0>
+  ; idx     : int<secret, `r0>
   ; data    : nr_data
   }
 in
@@ -75,27 +75,27 @@ in
  ********************)
 
 let default_user_data =
-  0<secret, _|_>
+  0<secret, `r0>
 in
 
-let default_ostack_data =
-  { is_some    = false<secret, _|_>
-  ; ostack_tag = rnd<secret, `r0>
+let default_ostack_data (x : unit<public, _|_>) =
+  { is_some    = false<secret, `r0>
+  ; ostack_tag = rnd<secret, `r0 \/ `r1>
   ; ostack_val = default_user_data
   }
 in
 
-let default_nr_data =
-  { is_some = false<secret, _|_>
-  ; nr_tag  = 0<secret, `r0>
-  ; nr_val  = default_ostack_data
+let default_nr_data (x : unit<public, _|_>) =
+  { is_some = false<secret, `r0>
+  ; nr_tag  = 0<secret, `r0 \/ `r1>
+  ; nr_val  = default_ostack_data ()<public, _|_>
   }
 in
 
-let default_block =
-  { is_some = false<secret, _|_>
-  ; idx     = 0<secret, _|_>
-  ; data    = default_nr_data
+let default_block (x : unit<public, _|_>) =
+  { is_some = false<secret, `r0>
+  ; idx     = 0<secret, `r0>
+  ; data    = default_nr_data ()<public, _|_>
   }
 in
 
@@ -113,13 +113,13 @@ let trivial_rr' (toram : trivial_oram) (idx : int<secret, _|_>) =
     if i = len then
       acc
     else
-      let curr = toram[i] <- default_block in
+      let curr = toram[i] <- default_block ()<public, _|_> in
       let swap = not acc.is_some && idx = curr.idx in
       let (l, r) = mux(swap, curr, acc) in
       let _ = toram[i] <- r in
       iterate (i + 1<public, _|_>) l
   in
-  iterate 0<public, _|_> default_block
+  iterate 0<public, _|_> (default_block ()<public, _|_>)
 in
 
 let trivial_rr (toram : trivial_oram) (idx : int<secret, _|_>) =
@@ -133,7 +133,7 @@ let trivial_add' (toram : trivial_oram) (blk : block) =
     if i = len then
       ()<public, _|_>
     else
-      let curr = toram[i] <- default_block in
+      let curr = toram[i] <- default_block ()<public, _|_> in
       let swap = not curr.is_some in
       let (l, r) = mux(swap, curr, acc) in
       let _ = toram[i] <- r in
@@ -142,8 +142,8 @@ let trivial_add' (toram : trivial_oram) (blk : block) =
   iterate 0<public, _|_> blk
 in
 
-let trivial_add (toram : trivial_oram) (idx : int<secret, _|_>) (data : nr_data) =
-  trivial_add' toram { is_some = true<secret, _|_>
+let trivial_add (toram : trivial_oram) (idx : int<secret, `r0>) (data : nr_data) =
+  trivial_add' toram { is_some = true<secret, `r0>
                      ; idx     = idx
                      ; data    = data
                      }
@@ -155,13 +155,14 @@ let trivial_pop' (toram : trivial_oram) =
     if i = len then
       acc
     else
-      let curr = toram[i] <- default_block in
+      let curr = toram[i] <- default_block ()<public, _|_> in
       let swap = not acc.is_some && curr.is_some in
       let (l, r) = mux(swap, curr, acc) in
       let _ = toram[i] <- r in
       iterate (i + 1<public, _|_>) l
   in
-  iterate 0<public, _|_> default_block
+  iterate 0<public, _|_> (default_block ()<public, _|_>)
+
 in
 
 (************************
@@ -193,7 +194,7 @@ let nr_rr' (nroram : nr_oram) (idx : int<secret, _|_>) (tag : int<public, _|_>) 
       let (ret, _) = mux(pass, res, acc) in
       iterate (level + 1<public, _|_>) ret
   in
-  iterate 0<public, _|_> default_nr_data
+  iterate 0<public, _|_> (default_nr_data ()<public, _|_>)
 in
 
 let nr_rr (nroram : nr_oram) (idx : int<secret, _|_>) (tag : int<public, _|_>) =
@@ -206,10 +207,65 @@ let nr_evict' (nroram : nr_oram) (level : int<public, _|_>) (loc : int<public, _
 
   let bucket = nroram[loc] in
   let popped = trivial_pop' bucket in
+  let default = default_block ()<public, _|_> in
+
+  let popped_ostack_tag = popped.data.nr_val.ostack_tag in
+
+  (* Need to turn `popped` and `default_block` into NR versions -- where ostack_tag : nuint *)
+  let popped_nu = { is_some = popped.is_some
+                  ; idx     = popped.idx
+                  ; data    = { is_some = popped.data.is_some
+                              ; nr_tag  = popped.data.nr_tag
+                              ; nr_val  = { is_some    = popped.data.nr_val.is_some
+                                          ; ostack_tag = trust(popped_ostack_tag)
+                                          ; ostack_val = popped.data.nr_val.ostack_val
+                                          }
+                              }
+                  } in
+
+  let default_ostack_tag = default.data.nr_val.ostack_tag in
+
+  let default_nu = { is_some = default.is_some
+                         ; idx     = default.idx
+                         ; data    = { is_some = default.data.is_some
+                                     ; nr_tag  = default.data.nr_tag
+                                     ; nr_val  = { is_some    = default.data.nr_val.is_some
+                                                 ; ostack_tag = trust(default_ostack_tag)
+                                                 ; ostack_val = default.data.nr_val.ostack_val
+                                                 }
+                                     }
+                         } in
 
   let left = (popped.data.nr_tag & mask) = 0<secret, `r0> in
+
   (* Basically need to claim that this mux is OK *)
-  let (l, r) = mux(left, popped, default_block) in
+  let (l_nu, r_nu) = mux(left, popped_nu, default_nu) in
+
+  let l_nu_ostack_tag = l_nu.data.nr_val.ostack_tag in
+
+  let l = { is_some = l_nu.is_some
+          ; idx     = l_nu.idx
+          ; data    = { is_some = l_nu.data.is_some
+                      ; nr_tag  = l_nu.data.nr_tag
+                      ; nr_val  = { is_some    = l_nu.data.nr_val.is_some
+                                  ; ostack_tag = prove(l_nu_ostack_tag)
+                                  ; ostack_val = l_nu.data.nr_val.ostack_val
+                                  }
+                      }
+          } in
+
+  let r_nu_ostack_tag = r_nu.data.nr_val.ostack_tag in
+
+  let r = { is_some = r_nu.is_some
+          ; idx     = r_nu.idx
+          ; data    = { is_some = r_nu.data.is_some
+                      ; nr_tag  = r_nu.data.nr_tag
+                      ; nr_val  = { is_some    = r_nu.data.nr_val.is_some
+                                  ; ostack_tag = prove(r_nu_ostack_tag)
+                                  ; ostack_val = r_nu.data.nr_val.ostack_val
+                                  }
+                      }
+          } in
 
   let left_child  = nroram[(2<public, _|_> * loc) + 1<public, _|_>] in
   let right_child = nroram[(2<public, _|_> * loc) + 2<public, _|_>] in
@@ -248,10 +304,10 @@ let nr_add' (nroram : nr_oram) (blk : block) =
   nr_evict nroram
 in
 
-let nr_add (nroram : nr_oram) (idx : int<secret, _|_>) (tag : int<secret, `r0>) (data : ostack_data) =
-  nr_add' nroram { is_some = true<secret, _|_>
+let nr_add (nroram : nr_oram) (idx : int<secret, `r0>) (tag : int<secret, `r0>) (data : ostack_data) =
+  nr_add' nroram { is_some = true<secret, `r0>
                  ; idx     = idx
-                 ; data    = { is_some = true<secret, _|_>
+                 ; data    = { is_some = true<secret, `r0>
                              ; nr_tag  = tag
                              ; nr_val  = data
                              }
@@ -292,7 +348,9 @@ let stackop (ostack : ostack) (ispush : bool<secret, _|_>) (data : user_data) =
                          }
              } in
 
-  let (add, _) = mux(ispush, cand, default_block) in
+  let default = default_block ()<public, _|_> in
+
+  let (add, _) = mux(ispush, cand, default) in
 
   let _ = nr_add' nroram add in
 

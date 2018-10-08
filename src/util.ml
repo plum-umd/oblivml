@@ -22,3 +22,11 @@ let parse_file f   =
   | SyntaxError (pos, msg) ->
     Printf.printf "%s\n%s" (Position.to_string pos) msg;
     None
+
+let option_to_string t = function
+  | None   -> "*"
+  | Some x -> t x
+
+let option_pp t f s = Format.pp_print_text f (option_to_string t s)
+
+let option_pp_sect = option_pp Section.to_string
