@@ -81,6 +81,8 @@ rule token = parse
   | "+"        { TPLUS }
   | "-"        { TMINUS }
   | "*"        { TSTAR }
+  | "/"        { TDIV }
+  | "%"        { TMOD }
   | "&"        { TLAND }
 
   (** Unary Arithmetic Relation *)

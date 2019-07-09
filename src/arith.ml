@@ -16,6 +16,8 @@ module Bin = struct
       | Add
       | Subtract
       | Mult
+      | Div
+      | Mod
       | And
   end
   module Rel = struct

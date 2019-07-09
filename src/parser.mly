@@ -84,6 +84,8 @@
 %token               TPLUS
 %token               TMINUS
 %token               TSTAR
+%token               TDIV
+%token               TMOD
 %token               TLAND
 
 /** Unary Arithmetic Relation */
@@ -184,7 +186,7 @@
 %left TLAND
 %left TEQ
 %left TPLUS TMINUS
-%left TSTAR
+%left TSTAR TDIV TMOD
 %nonassoc TNOT TARRAY
 %left TSLPAR TSRPAR TDOT
 
@@ -220,6 +222,14 @@ expr :
                                         ; lhs = $1
                                         ; rhs = $3
                                         }) }
+  | expr TDIV expr { annotate (EABinOp { op  = Arith.Bin.Op.Div
+                                       ; lhs = $1
+                                       ; rhs = $3
+                                       }) }
+  | expr TMOD expr { annotate (EABinOp { op  = Arith.Bin.Op.Mod
+                                       ; lhs = $1
+                                       ; rhs = $3
+                                       }) }
   | expr TLAND expr { annotate (EABinOp { op  = Arith.Bin.Op.And
                                         ; lhs = $1
                                         ; rhs = $3
