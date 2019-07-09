@@ -298,4 +298,8 @@ let rec add_rr_h (oram : oram) (idx : int<secret, _|_>) (level : int<public, _|_
     ()<public, _|_>
 in
 
+let add_rr (oram : oram) (idx : int<secret, _|_>) (d : rint<secret, `r0 \/ `r1> * rint<secret, `r0 \/ `r1>) =
+  add_rr_h oram idx 0<public, _|_> d
+in
+
 ()<public, _|_>
