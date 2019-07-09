@@ -21,6 +21,8 @@ struct
     | "int"   -> TBInt
     | "rbool" -> TBRBool
     | "rint"  -> TBRInt
+    | "nubool" -> TBNUBool
+    | "nuint" -> TBNUInt
     | _       -> failwith "Impossible: forbidden by lexer / parser."
 
   let to_string tb =

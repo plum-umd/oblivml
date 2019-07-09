@@ -169,7 +169,7 @@ let rec mux_merge loc l_guard r_guard t1 t2 =
                             raise (TypeError (loc, msg))
                         in
                         Map.set acc ~key:key ~data:d))
-  | _ -> failwith "Unimplemented"
+  | _ -> raise (TypeError (loc, "Unimplemented"))
 
 type alias_t = (Var.t, Type.t, Var.comparator_witness) Map.t
 

@@ -29,7 +29,7 @@ let rvar       = '`' letter (letter | digit | [''' '_'])*
 let rjoin      = "\\/"
 
 (** Types *)
-let base_t     = ("unit" | "bool" | "int" | "rbool" | "rint")
+let base_t     = ("unit" | "bool" | "int" | "rbool" | "rint" | "nubool" | "nuint")
 
 (** Variable *)
 let var        = letter (letter | digit | [''' '_'])*

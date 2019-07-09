@@ -36,7 +36,7 @@ in
 (** Data the OStack is storing *)
 type ostack_data =
   { is_some    : bool<secret, `r0>
-  ; ostack_tag : rint<secret, `r0 \/ `r1>
+  ; ostack_tag : nuint<secret, `r0>
   ; ostack_val : user_data
   }
 in
@@ -44,7 +44,7 @@ in
 (** Data the NRORAM is storing *)
 type nr_data =
   { is_some : bool<secret, `r0>
-  ; nr_tag  : int<secret, `r0 \/ `r1>
+  ; nr_tag  : int<secret, `r0>
   ; nr_val  : ostack_data
   }
 in
@@ -80,14 +80,14 @@ in
 
 let default_ostack_data (x : unit<public, _|_>) =
   { is_some    = false<secret, `r0>
-  ; ostack_tag = rnd<secret, `r0 \/ `r1>
+  ; ostack_tag = let fresh = rnd<secret, `r0> in trust(fresh)
   ; ostack_val = default_user_data
   }
 in
 
 let default_nr_data (x : unit<public, _|_>) =
   { is_some = false<secret, `r0>
-  ; nr_tag  = 0<secret, `r0 \/ `r1>
+  ; nr_tag  = 0<secret, `r0>
   ; nr_val  = default_ostack_data ()<public, _|_>
   }
 in
@@ -209,59 +209,50 @@ let nr_evict' (nroram : nr_oram) (level : int<public, _|_>) (loc : int<public, _
   let popped = trivial_pop' bucket in
   let default = default_block ()<public, _|_> in
 
-  let popped_ostack_tag = popped.data.nr_val.ostack_tag in
-
-  (* Need to turn `popped` and `default_block` into NR versions -- where ostack_tag : nuint *)
   let popped_nu = { is_some = popped.is_some
                   ; idx     = popped.idx
                   ; data    = { is_some = popped.data.is_some
                               ; nr_tag  = popped.data.nr_tag
                               ; nr_val  = { is_some    = popped.data.nr_val.is_some
-                                          ; ostack_tag = trust(popped_ostack_tag)
+                                          ; ostack_tag = popped.data.nr_val.ostack_tag
                                           ; ostack_val = popped.data.nr_val.ostack_val
                                           }
                               }
                   } in
 
-  let default_ostack_tag = default.data.nr_val.ostack_tag in
-
   let default_nu = { is_some = default.is_some
-                         ; idx     = default.idx
-                         ; data    = { is_some = default.data.is_some
-                                     ; nr_tag  = default.data.nr_tag
-                                     ; nr_val  = { is_some    = default.data.nr_val.is_some
-                                                 ; ostack_tag = trust(default_ostack_tag)
-                                                 ; ostack_val = default.data.nr_val.ostack_val
-                                                 }
-                                     }
-                         } in
+                   ; idx     = default.idx
+                   ; data    = { is_some = default.data.is_some
+                               ; nr_tag  = default.data.nr_tag
+                               ; nr_val  = { is_some    = default.data.nr_val.is_some
+                                           ; ostack_tag = default.data.nr_val.ostack_tag
+                                           ; ostack_val = default.data.nr_val.ostack_val
+                                           }
+                               }
+                   } in
 
   let left = (popped.data.nr_tag & mask) = 0<secret, `r0> in
 
   (* Basically need to claim that this mux is OK *)
   let (l_nu, r_nu) = mux(left, popped_nu, default_nu) in
 
-  let l_nu_ostack_tag = l_nu.data.nr_val.ostack_tag in
-
   let l = { is_some = l_nu.is_some
           ; idx     = l_nu.idx
           ; data    = { is_some = l_nu.data.is_some
                       ; nr_tag  = l_nu.data.nr_tag
                       ; nr_val  = { is_some    = l_nu.data.nr_val.is_some
-                                  ; ostack_tag = prove(l_nu_ostack_tag)
+                                  ; ostack_tag = l_nu.data.nr_val.ostack_tag
                                   ; ostack_val = l_nu.data.nr_val.ostack_val
                                   }
                       }
           } in
-
-  let r_nu_ostack_tag = r_nu.data.nr_val.ostack_tag in
 
   let r = { is_some = r_nu.is_some
           ; idx     = r_nu.idx
           ; data    = { is_some = r_nu.data.is_some
                       ; nr_tag  = r_nu.data.nr_tag
                       ; nr_val  = { is_some    = r_nu.data.nr_val.is_some
-                                  ; ostack_tag = prove(r_nu_ostack_tag)
+                                  ; ostack_tag = r_nu.data.nr_val.ostack_tag
                                   ; ostack_val = r_nu.data.nr_val.ostack_val
                                   }
                       }
@@ -335,14 +326,16 @@ let stackop (ostack : ostack) (ispush : bool<secret, _|_>) (data : user_data) =
   let res = nr_rr nroram rr_idx reveal(rr_tag) in
 
   let (idx', _) = mux(ispush, idx + 1<secret, _|_>, idx - 1<secret, _|_>) in
-  let (tag', _) = mux(ispush, rnd<secret, `r0>, res.ostack_tag) in
+  let fresh = rnd<secret, `r0> in
+  let (tag', _) = mux(ispush, trust(fresh), res.ostack_tag) in
+  let tag' = prove(tag') in
 
   let cand = { is_some = true<secret, _|_>
              ; idx     = idx'
              ; data    = { is_some = true<secret, _|_>
                          ; nr_tag  = use(tag')
                          ; nr_val  = { is_some    = true<secret, _|_>
-                                     ; ostack_tag = add_tag
+                                     ; ostack_tag = trust(add_tag)
                                      ; ostack_val = data
                                      }
                          }
