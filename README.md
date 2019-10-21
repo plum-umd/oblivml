@@ -44,11 +44,19 @@ At a minimum you will need the following installed via [OPAM](https://opam.ocaml
 
 ### Examples
 
-* [res/examples/nroram.lo](res/examples/nroram.lo) contains the implementation of non-recursive ORAM, described in Section 5.1
-  + [Lines 37 - 56](res/examples/nroram.lo#L37) are the data definitions found in the paper on lines 1024 - 1026.
-  + [Lines 88 - 106](res/examples/nroram.lo#L88) is the read and remove operation on buckets (trivial ORAM), found in the paper on lines 1050 - 1060.
-  + [Lines 159 - 181](res/examples/nroram.lo#L159) is the non-recursive ORAM read and remove operation on non-recursive ORAM, found in the paper on lines 1062 - 1070.
+* [res/examples/nroram.lo](res/examples/nroram.lo) contains the implementation of non-recursive ORAM, described in Section 5.1.
+  + [Lines 37 - 56](res/examples/nroram.lo#L37) are the data definitions of non-recursive ORAM, found in the paper on lines 1024 - 1026.
+  + [Lines 88 - 106](res/examples/nroram.lo#L88) is the read and remove operation on buckets (trivial ORAM), found in the paper on lines 1053 - 1064.
+  + [Lines 159 - 181](res/examples/nroram.lo#L159) is the non-recursive ORAM read and remove operation on non-recursive ORAM, found in the paper on lines 1065 - 1073.
   + We also support an add operation on non-recursive ORAM ([Lines 224 - 238](res/examples/nroram.lo#L224)), and the required eviction procedure ([Lines 200 - 222](res/examples/nroram.lo#L159)).
+* [res/examples/oram.lo](res/examples/oram.lo) contains the implementation of recursive ORAM, described in Section 5.2.
+  + [Line 58](res/examples/oram.lo#L58) is the data definition of recursive ORAM, found in the paper on line 1147.
+  + [Lines 251 - 272](res/examples/oram.lo#L251) is the read and remove operation on recursive ORAM, found in the paper on lines 1155 - 1163.
+  + [Lines 274 - 303](res/examples/oram.lo#L274) is the add operation on recursive ORAM, sketched in the paper on lines 1174 - 1180.
+* [res/examples/ostack.lo](res/examples/ostack.lo) contains the implementation of oblivious stacks, described in Appendix A. + [Lines 319 - 354](res/examples/ostack.lo#L319) is the `stackop` operation on oblivious stacks, described in Figure 15 (lines 1538 - 1550).
+
+In addition to these large implementations, we also include many of the small examples that appear throughout the paper.
+The examples in Figure 3 (lines 197 - 201) appear in [res/examples/affine.lo](res/examples/affine.lo) and [res/examples/uniformity.lo](res/examples/ostack.lo). The pathological example to illustrate the need for unsafe casts which appears in Appendix A.2 can be found in [res/examples/pathological.lo](res/examples/pathological.lo), and the fix with casts can be found in [res/examples/pathological-fix.lo](res/examples/pathological-fix.lo).
 
 ### Further Reading
 
