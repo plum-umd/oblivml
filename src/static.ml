@@ -863,3 +863,8 @@ let rec static (tenv : env_t) (talias : alias_t) (e : Expr.t) : Type.t * env_t =
      | _ ->
        let msg = Printf.sprintf "The guard of an if-statement must be a public boolean. Got: %s." (Type.to_string t_guard) in
        raise (TypeError (ite.guard.loc, msg)))
+
+let rec typecheck (e : Expr.t) : Type.t =
+  let emp = Map.empty (module Var) in
+  let (r, _) = static emp emp e in
+  r
