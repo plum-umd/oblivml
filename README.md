@@ -53,7 +53,8 @@ At a minimum you will need the following installed via [OPAM](https://opam.ocaml
   + [Line 58](res/examples/oram.lo#L58) is the data definition of recursive ORAM, found in the paper on line 1147.
   + [Lines 251 - 272](res/examples/oram.lo#L251) is the read and remove operation on recursive ORAM, found in the paper on lines 1155 - 1163.
   + [Lines 274 - 303](res/examples/oram.lo#L274) is the add operation on recursive ORAM, sketched in the paper on lines 1174 - 1180.
-* [res/examples/ostack.lo](res/examples/ostack.lo) contains the implementation of oblivious stacks, described in Appendix A. + [Lines 319 - 354](res/examples/ostack.lo#L319) is the `stackop` operation on oblivious stacks, described in Figure 15 (lines 1538 - 1550).
+* [res/examples/ostack.lo](res/examples/ostack.lo) contains the implementation of oblivious stacks, described in Appendix A.
+  + [Lines 319 - 354](res/examples/ostack.lo#L319) is the `stackop` operation on oblivious stacks, described in Figure 15 (lines 1538 - 1550).
 
 In addition to these large implementations, we also include many of the small examples that appear throughout the paper.
 The examples in Figure 3 (lines 197 - 201) appear in [res/examples/affine.lo](res/examples/affine.lo) and [res/examples/uniformity.lo](res/examples/ostack.lo). The pathological example to illustrate the need for unsafe casts which appears in Appendix A.2 can be found in [res/examples/pathological.lo](res/examples/pathological.lo), and the fix with casts can be found in [res/examples/pathological-fix.lo](res/examples/pathological-fix.lo).
