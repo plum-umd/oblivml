@@ -13,7 +13,11 @@ let to_string k =
   | Universal -> "universal"
   | Affine    -> "affine"
 
-let equal k1 k2 = k1 = k2
+let equal k1 k2 =
+  match (k1, k2) with
+  | (Affine, Affine) -> true
+  | (Universal, Universal) -> true
+  | _ -> false
 
 let order k1 k2 =
   match (k1, k2) with
