@@ -13,6 +13,9 @@ and t' =
                  ; region : Region.t
                  }
 
+  (** Values *)
+  | EVal      of { contents : value }
+
   (** Random Boolean *)
   | EFlip     of { label  : Label.t
                  ; region : Region.t
@@ -144,3 +147,16 @@ and t' =
                  ; thenb : t
                  ; elseb : t
                  }
+
+and value =
+  | VUnit
+  | VBool   of { contents : Bool.t }
+  | VInt    of { contents : Int.t }
+  | VLoc    of { contents : Loc.t }
+  | VAbs    of { param : Pattern.t
+               ; body : t}
+  | VRec    of { name : Var.t
+               ; param : Pattern.t
+               ; body : t }
+  | VTuple  of { contents : (value, value) Tuple.T2.t }
+  | VRecord of { contents : (Var.t * value) list }
