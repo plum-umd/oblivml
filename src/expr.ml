@@ -14,7 +14,9 @@ and t' =
                  }
 
   (** Values *)
-  | EVal      of { contents : value }
+  | EVal      of { value : value
+                 ; label : Label.t
+                 }
 
   (** Random Boolean *)
   | EFlip     of { label  : Label.t
@@ -149,14 +151,16 @@ and t' =
                  }
 
 and value =
-  | VUnit
-  | VBool   of { contents : Bool.t }
-  | VInt    of { contents : Int.t }
-  | VLoc    of { contents : Loc.t }
+  | VUnit   of Unit.t IDist.t
+  | VBool   of Bool.t IDist.t
+  | VInt    of Int.t IDist.t
+  | VFlip   of Bool.t IDist.t
+  | VRnd    of (Bool.t IDist.t) List.t
+  | VLoc    of Loc.t
   | VAbs    of { param : Pattern.t
                ; body : t}
   | VRec    of { name : Var.t
                ; param : Pattern.t
                ; body : t }
-  | VTuple  of { contents : (value, value) Tuple.T2.t }
-  | VRecord of { contents : (Var.t * value) list }
+  | VTuple  of (value, value) Tuple.T2.t
+  | VRecord of (Var.t * value) list
