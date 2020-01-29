@@ -38,26 +38,53 @@ let rec step (c : config) : (config IDist.t) Option.t =
     Some (IDist.return { c with n = c.n + 4 ; expr = { c.expr with node = Expr.EVal { contents = { value = VRnd ([b1 ; b2 ; b3 ; b4]) ; label = r.label } } } })
   | Expr.EVar p -> Some (IDist.return { c with expr = { c.expr with node = Expr.EVal { contents = (lookup c.env p.path) } } })
   | Expr.EBUnOp buo ->
-    (match buo.arg.node with
-     | Expr.EVal v ->
-       (match v.contents.value with
-        | VBool b ->
-          (match buo.op with
-           | Boolean.Un.Op.Not -> Some (IDist.return { c with expr = { c.expr with node = Expr.EVal { contents = { v.contents with value = VBool (IDist.negate b) } } } }))
-        | _ -> failwith "Impossible by typing")
-     | _ ->
-       Some
-         begin
-           let open Syntax.Let_syntax in
-           (match step { c with expr = buo.arg } with
+    Some
+      begin
+        match buo.arg.node with
+        | Expr.EVal v ->
+          (match v.contents.value with
+           | VBool b ->
+             (match buo.op with
+              | Boolean.Un.Op.Not -> IDist.return { c with expr = { c.expr with node = Expr.EVal { contents = { v.contents with value = VBool (IDist.negate b) } } } })
+           | _ -> failwith "Impossible by typing")
+        | _ ->
+          let open Syntax.Let_syntax in
+          (match step { c with expr = buo.arg } with
            | None -> failwith "Impossible by typing"
            | Some dc' ->
              let%bind c' = dc' in
              IDist.return { c' with expr = { c.expr with node = Expr.EBUnOp { buo with arg = c'.expr } } })
-         end)
+      end
+  | Expr.EBBinOp bbo ->
+    Some
+      begin
+        match bbo.lhs.node with
+        | Expr.EVal v1 ->
+          (match bbo.rhs.node with
+           | Expr.EVal v2 ->
+             (match v1.contents.value, v2.contents.value with
+              | VBool b1, VBool b2 ->
+                (match bbo.op with
+                 | Boolean.Bin.Op.And -> IDist.return { c with expr = { c.expr with node = Expr.EVal { contents = { value = VBool (IDist.bitand b1 b2) ; label = Label.join v1.contents.label v2.contents.label } } } })
+              | _ -> failwith "Impossible by typing")
+           | _ ->
+             let open Syntax.Let_syntax in
+             (match step { c with expr = bbo.rhs } with
+              | None -> failwith "Impossible by typing"
+              | Some dc' ->
+                let%bind c' = dc' in
+                IDist.return { c' with expr = { c.expr with node = Expr.EBBinOp { bbo with rhs = c'.expr } } }))
+        | _ ->
+          let open Syntax.Let_syntax in
+          (match step { c with expr = bbo.lhs } with
+           | None -> failwith "Impossible by typing"
+           | Some dc' ->
+             let%bind c' = dc' in
+             IDist.return { c' with expr = { c.expr with node = Expr.EBBinOp { bbo with lhs = c'.expr } } })
+      end
   | _ -> failwith "TODO"
 
-let rec eval' (dt : trace IDist.t) (c : config) : trace IDist.t =
+        let rec eval' (dt : trace IDist.t) (c : config) : trace IDist.t =
   let open Syntax.Let_syntax in
   let%bind t = dt in
   let dt' = IDist.return (c :: t) in

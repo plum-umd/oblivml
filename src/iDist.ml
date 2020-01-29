@@ -16,6 +16,8 @@ let pi2 a =
 
 let negate (x : Bool.t t) : (Bool.t t) = failwith "TODO"
 
+let bitand (x : Bool.t t) (y : Bool.t t) = failwith "TODO"
+
 let rec bit n =
   match n with
   | 0 -> Choice (Outcome true, Outcome false)
