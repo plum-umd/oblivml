@@ -29,3 +29,4 @@ let pp f l      = Format.pp_print_text f (to_string l)
 let order l1 l2 = Set.is_subset l1 l2
 let equiv l1 l2 = (order l1 l2) && (order l2 l1)
 let join  l1 l2 = Set.union l1 l2
+let meet l1 l2 = Set.inter l1 l2

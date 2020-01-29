@@ -82,6 +82,34 @@ let rec step (c : config) : (config IDist.t) Option.t =
              let%bind c' = dc' in
              IDist.return { c' with expr = { c.expr with node = Expr.EBBinOp { bbo with lhs = c'.expr } } })
       end
+  | Expr.EAUnOp _ -> failwith "TODO"
+  | Expr.EABinOp _ -> failwith "TODO"
+  | Expr.EAUnRel _ -> failwith "TODO"
+  | Expr.EABinRel _ -> failwith "TODO"
+  | Expr.ETuple tup ->
+    let (lhs, rhs) = tup.contents in
+    Some
+      begin
+        match lhs.node with
+        | Expr.EVal v1 ->
+          (match rhs.node with
+           | Expr.EVal v2 ->
+             IDist.return { c with expr = { c.expr with node = Expr.EVal { contents = { value = VTuple (v1.contents, v2.contents) ; label = Label.meet v1.contents.label v2.contents.label } } } }
+           | _ ->
+             let open Syntax.Let_syntax in
+             (match step { c with expr = rhs } with
+              | None -> failwith "Impossible by typing"
+              | Some dc' ->
+                let%bind c' = dc' in
+                IDist.return { c' with expr = { c.expr with node = Expr.ETuple { contents = (lhs, c'.expr) } } }))
+        | _ ->
+          let open Syntax.Let_syntax in
+          (match step { c with expr = lhs } with
+           | None -> failwith "Impossible by typing"
+           | Some dc' ->
+             let%bind c' = dc' in
+             IDist.return { c' with expr = { c.expr with node = Expr.ETuple { contents = (c'.expr, rhs) } } })
+      end
   | _ -> failwith "TODO"
 
         let rec eval' (dt : trace IDist.t) (c : config) : trace IDist.t =
