@@ -12,7 +12,7 @@ and t' =
                  ; region : Region.t
                  }
 
-  | EVal      of { contents : value } (** Values *)
+  | EVal      of value (** Values *)
 
   | EFlip     of { label  : Label.t   (** Random Boolean *)
                  ; region : Region.t
@@ -52,11 +52,9 @@ and t' =
                  ; rhs : t
                  }
 
-  | ETuple    of { contents : (t, t) Tuple.T2.t   (** Tuple *)
-                 }
+  | ETuple    of (t, t) Tuple.T2.t   (** Tuple *)
 
-  | ERecord   of { contents : (Var.t * t) list   (** Record *)
-                 }
+  | ERecord   of (Var.t * t) list   (** Record *)
 
   | EArrInit  of { size : t   (** Array Initialization *)
                  ; init : t
@@ -72,20 +70,15 @@ and t' =
                  ; value : t
                  }
 
-  | EArrLen   of { addr : t   (** Array Length *)
-                 }
+  | EArrLen   of t   (** Array Length *)
 
-  | EUse      of { arg : Var.t   (** Random -> Secret *)
-                 }
+  | EUse      of Var.t   (** Random -> Secret *)
 
-  | EReveal   of { arg : Var.t   (** Random -> Public *)
-                 }
+  | EReveal   of Var.t   (** Random -> Public *)
 
-  | ETrust    of { arg : Var.t   (** Random -> Non-Uniform *)
-                 }
+  | ETrust    of Var.t   (** Random -> Non-Uniform *)
 
-  | EProve    of { arg : Var.t   (** Non-Uniform -> Random *)
-                 }
+  | EProve    of Var.t   (** Non-Uniform -> Random *)
 
   | EMux      of { guard : t   (** Mux *)
                  ; lhs   : t

@@ -179,6 +179,8 @@ let rec static (tenv : env_t) (talias : alias_t) (e : Expr.t) : Type.t * env_t =
     let t_lit = Type.TBase (Literal.to_type l.value, l.label, l.region) in
     (t_lit, tenv)
 
+  | Expr.EVal _ -> failwith "Impossible, values do not appear in source programs"
+
   | Expr.EFlip f ->
     if Region.equiv f.region Region.bottom then
       let msg = "Region annotation cannot be bottom." in
@@ -318,8 +320,7 @@ let rec static (tenv : env_t) (talias : alias_t) (e : Expr.t) : Type.t * env_t =
        in
        raise (TypeError (abr.lhs.loc, msg)))
 
-  | Expr.ETuple tup ->
-    let (left, right)     = tup.contents in
+  | Expr.ETuple (left, right) ->
     let (t_left, tenv')   = static tenv talias left in
     let (t_right, tenv'') = static tenv' talias right in
     let t_tuple           = Type.TTuple (t_left, t_right) in
@@ -328,7 +329,7 @@ let rec static (tenv : env_t) (talias : alias_t) (e : Expr.t) : Type.t * env_t =
   | Expr.ERecord bindings ->
     let (t_bindings, tenv') =
       List.fold_left
-        bindings.contents
+        bindings
         ~init:(Map.empty (module Var), tenv)
         ~f:(fun (t_bindings_acc, env_acc) (field, binding) ->
             let (t, tenv_curr) = static env_acc talias binding in
@@ -489,7 +490,7 @@ let rec static (tenv : env_t) (talias : alias_t) (e : Expr.t) : Type.t * env_t =
        raise (TypeError (write.addr.loc, msg)))
 
   | Expr.EArrLen len ->
-    let (t_addr, tenv') = static tenv talias len.addr in
+    let (t_addr, tenv') = static tenv talias len in
     (match t_addr with
      | Type.TArray _ ->
        let l'       = Label.bottom in
@@ -502,17 +503,17 @@ let rec static (tenv : env_t) (talias : alias_t) (e : Expr.t) : Type.t * env_t =
            "This isn't an array. It's type is %s."
            (Type.to_string t_addr)
        in
-       raise (TypeError (len.addr.loc, msg)))
+       raise (TypeError (len.loc, msg)))
 
   | Expr.EUse use ->
     (try
-       let x_t = Map.find_exn tenv use.arg in
+       let x_t = Map.find_exn tenv use in
        match x_t with
        | None ->
          let msg =
            Printf.sprintf
              "Attempted to reference the variable %s, which has been consumed."
-             (Var.to_string use.arg)
+             (Var.to_string use)
          in
          raise (TypeError (e.loc, msg))
        | Some t ->
@@ -536,7 +537,7 @@ let rec static (tenv : env_t) (talias : alias_t) (e : Expr.t) : Type.t * env_t =
             let msg =
               Printf.sprintf
                 "The variable %s must be type rbool or rint, but is %s."
-                (Var.to_string use.arg)
+                (Var.to_string use)
                 (Type.to_string t)
             in
             raise (TypeError (e.loc, msg)))
@@ -545,19 +546,19 @@ let rec static (tenv : env_t) (talias : alias_t) (e : Expr.t) : Type.t * env_t =
        let msg =
          Printf.sprintf
            "The variable %s is undefined."
-           (Var.to_string use.arg)
+           (Var.to_string use)
        in
        raise (TypeError (e.loc, msg)))
 
   | Expr.EReveal rev ->
     (try
-       let x_t = Map.find_exn tenv rev.arg in
+       let x_t = Map.find_exn tenv rev in
        match x_t with
        | None ->
          let msg =
            Printf.sprintf
              "Attempted to reference the variable %s, which has been consumed."
-             (Var.to_string rev.arg)
+             (Var.to_string rev)
          in
          raise (TypeError (e.loc, msg))
        | Some t ->
@@ -581,7 +582,7 @@ let rec static (tenv : env_t) (talias : alias_t) (e : Expr.t) : Type.t * env_t =
             let msg =
               Printf.sprintf
                 "The variable %s must be type rbool or rint, but is %s."
-                (Var.to_string rev.arg)
+                (Var.to_string rev)
                 (Type.to_string t)
             in
             raise (TypeError (e.loc, msg)))
@@ -590,19 +591,19 @@ let rec static (tenv : env_t) (talias : alias_t) (e : Expr.t) : Type.t * env_t =
        let msg =
          Printf.sprintf
            "The variable %s is undefined."
-           (Var.to_string rev.arg)
+           (Var.to_string rev)
        in
        raise (TypeError (e.loc, msg)))
 
   | Expr.ETrust trust ->
     (try
-       let x_t = Map.find_exn tenv trust.arg in
+       let x_t = Map.find_exn tenv trust in
        match x_t with
        | None ->
          let msg =
            Printf.sprintf
              "Attempted to reference the variable %s, which has been consumed."
-             (Var.to_string trust.arg)
+             (Var.to_string trust)
          in
          raise (TypeError (e.loc, msg))
        | Some t ->
@@ -626,7 +627,7 @@ let rec static (tenv : env_t) (talias : alias_t) (e : Expr.t) : Type.t * env_t =
             let msg =
               Printf.sprintf
                 "The variable %s must be type rbool or rint, but is %s."
-                (Var.to_string trust.arg)
+                (Var.to_string trust)
                 (Type.to_string t)
             in
             raise (TypeError (e.loc, msg)))
@@ -635,19 +636,19 @@ let rec static (tenv : env_t) (talias : alias_t) (e : Expr.t) : Type.t * env_t =
        let msg =
          Printf.sprintf
            "The variable %s is undefined."
-           (Var.to_string trust.arg)
+           (Var.to_string trust)
        in
        raise (TypeError (e.loc, msg)))
 
   | Expr.EProve prove ->
     (try
-       let x_t = Map.find_exn tenv prove.arg in
+       let x_t = Map.find_exn tenv prove in
        match x_t with
        | None ->
          let msg =
            Printf.sprintf
              "Attempted to reference the variable %s, which has been consumed."
-             (Var.to_string prove.arg)
+             (Var.to_string prove)
          in
          raise (TypeError (e.loc, msg))
        | Some t ->
@@ -671,7 +672,7 @@ let rec static (tenv : env_t) (talias : alias_t) (e : Expr.t) : Type.t * env_t =
             let msg =
               Printf.sprintf
                 "The variable %s must be type nubool or nuint, but is %s."
-                (Var.to_string prove.arg)
+                (Var.to_string prove)
                 (Type.to_string t)
             in
             raise (TypeError (e.loc, msg)))
@@ -680,7 +681,7 @@ let rec static (tenv : env_t) (talias : alias_t) (e : Expr.t) : Type.t * env_t =
        let msg =
          Printf.sprintf
            "The variable %s is undefined."
-           (Var.to_string prove.arg)
+           (Var.to_string prove)
        in
        raise (TypeError (e.loc, msg)))
 

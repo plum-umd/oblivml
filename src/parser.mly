@@ -240,8 +240,7 @@ expr :
                                        ; rhs = $3
                                        }) }
   /** Tuple */
-  | TLPAR expr TCOMMA expr TRPAR { annotate (ETuple { contents = ($2, $4)
-                                                    }) }
+  | TLPAR expr TCOMMA expr TRPAR { annotate (ETuple ($2, $4)) }
   /** Array */
   | TARRAY TLPAR expr TRPAR TSLPAR expr TSRPAR { annotate (EArrInit { size = $3
                                                                     ; init = $6
@@ -253,8 +252,7 @@ expr :
                                                                ; idx   = $3
                                                                ; value = $6
                                                                }) }
-  | TLENGTH TLPAR expr TRPAR { annotate (EArrLen { addr = $3
-                                                 }) }
+  | TLENGTH TLPAR expr TRPAR { annotate (EArrLen $3) }
   /** Mux */
   | TMUX TLPAR expr TCOMMA expr TCOMMA expr TRPAR { annotate (EMux { guard = $3
                                                                    ; lhs   = $5
@@ -319,20 +317,15 @@ atexpr :
   | TVAR path { annotate (EVar { path = $1 :: $2 }) }
 
   /** Record */
-  | TCLPAR record_defs TCRPAR { annotate (ERecord { contents = $2
-                                                 }) }
+  | TCLPAR record_defs TCRPAR { annotate (ERecord $2) }
   /** Use */
-  | TUSE TLPAR TVAR TRPAR { annotate (EUse { arg = $3
-                                           }) }
+  | TUSE TLPAR TVAR TRPAR { annotate (EUse $3) }
   /** Reveal */
-  | TREVEAL TLPAR TVAR TRPAR { annotate (EReveal { arg = $3
-                                                 }) }
+  | TREVEAL TLPAR TVAR TRPAR { annotate (EReveal $3) }
   /** Trust */
-  | TTRUST TLPAR TVAR TRPAR { annotate (ETrust { arg = $3
-                                               }) }
+  | TTRUST TLPAR TVAR TRPAR { annotate (ETrust $3) }
   /** Prove */
-  | TPROVE TLPAR TVAR TRPAR { annotate (EProve { arg = $3
-                                               }) }
+  | TPROVE TLPAR TVAR TRPAR { annotate (EProve $3) }
   /** Grouping */
   | TLPAR expr TRPAR { $2 }
 ;
