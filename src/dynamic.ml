@@ -2,7 +2,7 @@ open Core
 
 type config = { n : Int.t
               ; env   : (Var.t, Expr.value, Var.comparator_witness) Map.t
-              ; store : (Loc.t, Expr.value, Loc.comparator_witness) Map.t
+              ; store : (Loc.t, Expr.value Array.t, Loc.comparator_witness) Map.t
               ; expr : Expr.t }
 
 type trace = config List.t
@@ -109,9 +109,40 @@ let rec step (c : config) : (config IDist.t) Option.t =
              let%bind c' = dc' in
              IDist.return { c' with expr = { c.expr with node = Expr.ETuple (c'.expr, rhs) } })
       end
+  | Expr.ERecord fields -> failwith "TODO"
+  | Expr.EArrInit spec ->
+    Some
+      begin
+        match spec.size.node with
+        | Expr.EVal vsize ->
+          (match spec.init.node with
+           | Expr.EVal vinit ->
+             (match vsize.value with
+              | VInt dn ->
+                let open Syntax.Let_syntax in
+                let%bind n = dn in
+                let l = Loc.fresh () in
+                IDist.return { c with expr = { c.expr with node = Expr.EVal { value = VLoc l ; label = Label.public } }
+                                    ; store = Map.add_exn c.store ~key:l ~data:(Array.init n ~f:(fun _ -> vinit)) }
+              | _ -> failwith "Impossible by typing")
+           | _ ->
+             let open Syntax.Let_syntax in
+             (match step { c with expr = spec.init } with
+              | None -> failwith "Impossible by typing"
+              | Some dc' ->
+                let%bind c' = dc' in
+                IDist.return { c' with expr = { c.expr with node = Expr.EArrInit { spec with init = c'.expr } } }))
+        | _ ->
+          let open Syntax.Let_syntax in
+          (match step { c with expr = spec.size } with
+           | None -> failwith "Impossible by typing"
+           | Some dc' ->
+             let%bind c' = dc' in
+             IDist.return { c' with expr = { c.expr with node = Expr.EArrInit { spec with size = c'.expr } } })
+      end
   | _ -> failwith "TODO"
 
-        let rec eval' (dt : trace IDist.t) (c : config) : trace IDist.t =
+let rec eval' (dt : trace IDist.t) (c : config) : trace IDist.t =
   let open Syntax.Let_syntax in
   let%bind t = dt in
   let dt' = IDist.return (c :: t) in
