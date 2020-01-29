@@ -7,150 +7,124 @@ type t =
   }
 
 and t' =
-  (** Literal *)
-  | ELit      of { value  : Literal.t
+  | ELit      of { value  : Literal.t (** Literal *)
                  ; label  : Label.t
                  ; region : Region.t
                  }
 
-  (** Values *)
-  | EVal      of { value : value
-                 ; label : Label.t
-                 }
+  | EVal      of { contents : value } (** Values *)
 
-  (** Random Boolean *)
-  | EFlip     of { label  : Label.t
+  | EFlip     of { label  : Label.t   (** Random Boolean *)
                  ; region : Region.t
                  }
 
-  (** Random Integer *)
-  | ERnd      of { label  : Label.t
+  | ERnd      of { label  : Label.t  (** Random Integer *)
                  ; region : Region.t
                  }
 
-  (** Variable *)
-  | EVar      of { path : Var.t list
+  | EVar      of { path : Var.t list  (** Variable *)
                  }
 
-  (** Unary Boolean Operation *)
-  | EBUnOp    of { op  : Boolean.Un.Op.t
+  | EBUnOp    of { op  : Boolean.Un.Op.t  (** Unary Boolean Operation *)
                  ; arg : t
                  }
 
-  (** Binary Boolean Operation *)
-  | EBBinOp   of { op  : Boolean.Bin.Op.t
+  | EBBinOp   of { op  : Boolean.Bin.Op.t   (** Binary Boolean Operation *)
                  ; lhs : t
                  ; rhs : t
                  }
 
-  (** Unary Arithmetic Operation *)
-  | EAUnOp    of { op  : Arith.Un.Op.t
+  | EAUnOp    of { op  : Arith.Un.Op.t  (** Unary Arithmetic Operation *)
                  ; arg : t
                  }
 
-  (** Binary Arithmetic Operation *)
-  | EABinOp   of { op  : Arith.Bin.Op.t
+  | EABinOp   of { op  : Arith.Bin.Op.t   (** Binary Arithmetic Operation *)
                  ; lhs : t
                  ; rhs : t
                  }
 
-  (** Unary Arithmetic Relation *)
-  | EAUnRel   of { rel : Arith.Un.Rel.t
+  | EAUnRel   of { rel : Arith.Un.Rel.t   (** Unary Arithmetic Relation *)
                  ; arg : t
                  }
 
-  (** Binary Arithmetic Relation *)
-  | EABinRel  of { rel : Arith.Bin.Rel.t
+  | EABinRel  of { rel : Arith.Bin.Rel.t   (** Binary Arithmetic Relation *)
                  ; lhs : t
                  ; rhs : t
                  }
 
-  (** Tuple *)
-  | ETuple    of { contents : (t, t) Tuple.T2.t
+  | ETuple    of { contents : (t, t) Tuple.T2.t   (** Tuple *)
                  }
 
-  (** Record *)
-  | ERecord   of { contents : (Var.t * t) list
+  | ERecord   of { contents : (Var.t * t) list   (** Record *)
                  }
 
-  (** Array Initialization *)
-  | EArrInit  of { size : t
+  | EArrInit  of { size : t   (** Array Initialization *)
                  ; init : t
                  }
 
-  (** Array Read *)
-  | EArrRead  of { addr : t
+  | EArrRead  of { addr : t   (** Array Read *)
                  ; idx  : t
                  }
 
-  (** Array Write *)
-  | EArrWrite of { addr  : t
+
+  | EArrWrite of { addr  : t   (** Array Write *)
                  ; idx   : t
                  ; value : t
                  }
 
-  (** Array Length *)
-  | EArrLen   of { addr : t
+  | EArrLen   of { addr : t   (** Array Length *)
                  }
 
-  (** Random -> Secret *)
-  | EUse      of { arg : Var.t
+  | EUse      of { arg : Var.t   (** Random -> Secret *)
                  }
 
-  (** Random -> Public *)
-  | EReveal   of { arg : Var.t
+  | EReveal   of { arg : Var.t   (** Random -> Public *)
                  }
 
-  (** Random -> Non-Uniform *)
-  | ETrust    of { arg : Var.t
+  | ETrust    of { arg : Var.t   (** Random -> Non-Uniform *)
                  }
 
-  (** Non-Uniform -> Random *)
-  | EProve    of { arg : Var.t
+  | EProve    of { arg : Var.t   (** Non-Uniform -> Random *)
                  }
 
-  (** Mux *)
-  | EMux      of { guard : t
+  | EMux      of { guard : t   (** Mux *)
                  ; lhs   : t
                  ; rhs   : t
                  }
 
-  (** Abstraction *)
-  | EAbs      of { param : Pattern.t
+  | EAbs      of { param : Pattern.t   (** Abstraction *)
                  ; body  : t
                  }
 
-  (** Recursive Abstraction *)
-  | ERec      of { name  : Var.t
+  | ERec      of { name  : Var.t   (** Recursive Abstraction *)
                  ; param : Pattern.t
                  ; body  : t
                  ; t_ret : Type.t
                  }
 
-  (** Application *)
-  | EApp      of { lam : t
+  | EApp      of { lam : t   (** Application *)
                  ; arg : t
                  }
 
-  (** Let-Binding *)
-  | ELet      of { pat   : Pattern.t
+  | ELet      of { pat   : Pattern.t   (** Let-Binding *)
                  ; value : t
                  ; body  : t
                  }
 
-  (** Type Alias *)
-  | EType     of { name : Var.t
+  | EType     of { name : Var.t   (** Type Alias *)
                  ; typ  : Type.t
                  ; body : t
                  }
 
-  (** Conditional *)
-  | EIf       of { guard : t
+  | EIf       of { guard : t   (** Conditional *)
                  ; thenb : t
                  ; elseb : t
                  }
 
-and value =
+and value = { value : value'
+            ; label : Label.t }
+
+and value' =
   | VUnit   of Unit.t IDist.t
   | VBool   of Bool.t IDist.t
   | VInt    of Int.t IDist.t

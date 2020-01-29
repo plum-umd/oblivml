@@ -9,31 +9,41 @@ type trace = config List.t
 
 module Syntax = Monad.Make(IDist)
 
-let lookup e p : Expr.value = failwith "TODO"
+let rec lookup e p : Expr.value =
+  match p with
+  | [] -> failwith "Impossible"
+  | var :: path ->
+    List.fold_left
+      ~init:(Map.find_exn e var)
+      ~f:(fun (acc : Expr.value) x ->
+          match acc.value with
+          | Expr.VRecord fields -> let m = Map.of_alist_exn (module Var) fields in Map.find_exn m x
+          | _ -> failwith "Not a record")
+      p
 
 let rec step (c : config) : (config IDist.t) Option.t =
   match c.expr.node with
   | Expr.ELit l ->
     (match l.value with
-     | LitUnit () -> Some (IDist.return { c with expr = { c.expr with node = Expr.EVal { value = VUnit (IDist.return ()) ; label = l.label } } })
-     | LitBool b  -> Some (IDist.return { c with expr = { c.expr with node = Expr.EVal { value = VBool (IDist.return b) ; label = l.label } } })
-     | LitInt  n  -> Some (IDist.return { c with expr = { c.expr with node = Expr.EVal { value = VInt (IDist.return n) ; label = l.label } } }))
+     | LitUnit () -> Some (IDist.return { c with expr = { c.expr with node = Expr.EVal { contents = { value = VUnit (IDist.return ()) ; label = l.label } } } })
+     | LitBool b  -> Some (IDist.return { c with expr = { c.expr with node = Expr.EVal { contents = { value = VBool (IDist.return b) ; label = l.label } } } })
+     | LitInt  n  -> Some (IDist.return { c with expr = { c.expr with node = Expr.EVal { contents = { value = VInt (IDist.return n) ; label = l.label } } } }))
   | Expr.EVal _ -> None
-  | Expr.EFlip fl -> Some (IDist.return { c with n = c.n + 1 ; expr = { c.expr with node = Expr.EVal { value = VFlip (IDist.bit c.n) ; label = fl.label } } })
+  | Expr.EFlip fl -> Some (IDist.return { c with n = c.n + 1 ; expr = { c.expr with node = Expr.EVal { contents = { value = VFlip (IDist.bit c.n) ; label = fl.label } } } })
   | Expr.ERnd r ->
     let b1 = IDist.bit c.n in
     let b2 = IDist.bit (c.n + 1) in
     let b3 = IDist.bit (c.n + 2) in
     let b4 = IDist.bit (c.n + 3) in
-    Some (IDist.return { c with n = c.n + 4 ; expr = { c.expr with node = Expr.EVal { value = VRnd ([b1 ; b2 ; b3 ; b4]) ; label = r.label } } })
-  | Expr.EVar p -> Some (IDist.return { c with expr = { c.expr with node = Expr.EVal { value = (lookup c.env p.path) ; label = failwith "sigh" } } })
+    Some (IDist.return { c with n = c.n + 4 ; expr = { c.expr with node = Expr.EVal { contents = { value = VRnd ([b1 ; b2 ; b3 ; b4]) ; label = r.label } } } })
+  | Expr.EVar p -> Some (IDist.return { c with expr = { c.expr with node = Expr.EVal { contents = (lookup c.env p.path) } } })
   | Expr.EBUnOp buo ->
     (match buo.arg.node with
      | Expr.EVal v ->
-       (match v.value with
+       (match v.contents.value with
         | VBool b ->
           (match buo.op with
-           | Boolean.Un.Op.Not -> Some (IDist.return { c with expr = { c.expr with node = Expr.EVal { v with value = VBool (IDist.negate b) } } }))
+           | Boolean.Un.Op.Not -> Some (IDist.return { c with expr = { c.expr with node = Expr.EVal { contents = { v.contents with value = VBool (IDist.negate b) } } } }))
         | _ -> failwith "Impossible by typing")
      | _ ->
        Some
