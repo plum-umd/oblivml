@@ -1,178 +1,239 @@
 open Core
 
-type config = { n : Int.t
-              ; env   : (Var.t, Expr.value, Var.comparator_witness) Map.t
-              ; store : (Loc.t, Expr.value Array.t, Loc.comparator_witness) Map.t
-              ; expr : Expr.t }
+type config = { n     : Int.t
+              ; env   : (Var.t, Mixed.value, Var.comparator_witness) Map.t
+              ; store : (Loc.t, Mixed.value Array.t, Loc.comparator_witness) Map.t
+              ; expr  : Mixed.t }
 
 type trace = config List.t
 
 module Syntax = Monad.Make(IDist)
+(*
+let rec of_source (e : Expr.t) : Mixed.t =
+  match e.node with
+  | Expr.ELit l -> Mixed.ELit { value = l.value ; label = l.label }
+  | Expr.EFlip _ -> Mixed.EFlip
+  | Expr.ERnd _ -> Mixed.ERnd
+  | Expr.EVar p -> Mixed.EVar { path = p.path }
+  | Expr.EBUnOp b -> Mixed.EBUnOp { op = b.op ; arg = of_source b.arg }
+  | Expr.EBBinOp b -> Mixed.EBBinOp { op = b.op ; lhs = of_source b.lhs ; rhs = of_source b.rhs }
+  | Expr.EAUnOp a -> Mixed.EAUnOp { op = a.op ; arg = of_source a.arg }
+  | EABinOp a -> Mixed.EABinOp { op = a.op ; lhs = of_source a.lhs ; rhs = of_source a.rhs }
+  | EAUnRel a -> Mixed.EAUnRel { rel = a.rel ; arg = of_source a.arg }
+  | EABinRel a -> Mixed.EABinRel { rel = a.rel ; lhs = of_source a.lhs ; rhs = of_source a.rhs }
+  | ETuple (l, r) -> Mixed.ETuple (of_source l, of_source r)
+  | ERecord fields -> Mixed.ERecord (List.map ~f:(fun (x, e) -> (x, of_source e)) fields)
+  | EArrInit  of { size : t   (** Array Initialization *)
+                 ; init : t
+                 }
 
-let rec lookup e p : Expr.value =
+  | EArrRead  of { addr : t   (** Array Read *)
+                 ; idx  : t
+                 }
+
+
+  | EArrWrite of { addr  : t   (** Array Write *)
+                 ; idx   : t
+                 ; value : t
+                 }
+
+  | EArrLen   of t   (** Array Length *)
+
+  | EUse      of Var.t   (** Random -> Secret *)
+
+  | EReveal   of Var.t   (** Random -> Public *)
+
+  | ETrust    of Var.t   (** Random -> Non-Uniform *)
+
+  | EProve    of Var.t   (** Non-Uniform -> Random *)
+
+  | EMux      of { guard : t   (** Mux *)
+                 ; lhs   : t
+                 ; rhs   : t
+                 }
+
+  | EAbs      of { param : Pattern.t   (** Abstraction *)
+                 ; body  : t
+                 }
+
+  | ERec      of { name  : Var.t   (** Recursive Abstraction *)
+                 ; param : Pattern.t
+                 ; body  : t
+                 ; t_ret : Type.t
+                 }
+
+  | EApp      of { lam : t   (** Application *)
+                 ; arg : t
+                 }
+
+  | ELet      of { pat   : Pattern.t   (** Let-Binding *)
+                 ; value : t
+                 ; body  : t
+                 }
+
+  | EType     of { name : Var.t   (** Type Alias *)
+                 ; typ  : Type.t
+                 ; body : t
+                 }
+
+  | EIf       of { guard : t   (** Conditional *)
+                 ; thenb : t
+                 ; elseb : t
+                 }
+*)
+let rec lookup e p : Mixed.value =
   match p with
   | [] -> failwith "Impossible"
   | var :: path ->
     List.fold_left
       ~init:(Map.find_exn e var)
-      ~f:(fun (acc : Expr.value) x ->
-          match acc.value with
-          | Expr.VRecord fields -> let m = Map.of_alist_exn (module Var) fields in Map.find_exn m x
+      ~f:(fun acc x ->
+          match acc with
+          | Mixed.VRecord fields -> let m = Map.of_alist_exn (module Var) fields in Map.find_exn m x
           | _ -> failwith "Not a record")
       p
 
 let rec step (c : config) : (config IDist.t) Option.t =
-  match c.expr.node with
-  | Expr.ELit l ->
-    (match l.value with
-     | LitUnit () -> Some (IDist.return { c with expr = { c.expr with node = Expr.EVal { value = VUnit (IDist.return ()) ; label = l.label } } })
-     | LitBool b  -> Some (IDist.return { c with expr = { c.expr with node = Expr.EVal { value = VBool (IDist.return b) ; label = l.label } } })
-     | LitInt  n  -> Some (IDist.return { c with expr = { c.expr with node = Expr.EVal { value = VInt (IDist.return n) ; label = l.label } } }))
-  | Expr.EVal _ -> None
-  | Expr.EFlip fl -> Some (IDist.return { c with n = c.n + 1 ; expr = { c.expr with node = Expr.EVal { value = VFlip (IDist.bit c.n) ; label = fl.label } } })
-  | Expr.ERnd r ->
-    let b1 = IDist.bit c.n in
-    let b2 = IDist.bit (c.n + 1) in
-    let b3 = IDist.bit (c.n + 2) in
-    let b4 = IDist.bit (c.n + 3) in
-    Some (IDist.return { c with n = c.n + 4 ; expr = { c.expr with node = Expr.EVal { value = VRnd ([b1 ; b2 ; b3 ; b4]) ; label = r.label } } })
-  | Expr.EVar p -> Some (IDist.return { c with expr = { c.expr with node = Expr.EVal (lookup c.env p.path) } })
-  | Expr.EBUnOp buo ->
+  match c.expr with
+  | Mixed.EVal _ -> None
+  | _ ->
     Some
       begin
-        match buo.arg.node with
-        | Expr.EVal v ->
-          (match v.value with
-           | VBool b ->
-             (match buo.op with
-              | Boolean.Un.Op.Not -> IDist.return { c with expr = { c.expr with node = Expr.EVal { v with value = VBool (IDist.negate b) } } })
-           | _ -> failwith "Impossible by typing")
-        | _ ->
-          let open Syntax.Let_syntax in
-          (match step { c with expr = buo.arg } with
-           | None -> failwith "Impossible by typing"
-           | Some dc' ->
-             let%bind c' = dc' in
-             IDist.return { c' with expr = { c.expr with node = Expr.EBUnOp { buo with arg = c'.expr } } })
-      end
-  | Expr.EBBinOp bbo ->
-    Some
-      begin
-        match bbo.lhs.node with
-        | Expr.EVal v1 ->
-          (match bbo.rhs.node with
-           | Expr.EVal v2 ->
-             (match v1.value, v2.value with
-              | VBool b1, VBool b2 ->
-                (match bbo.op with
-                 | Boolean.Bin.Op.And -> IDist.return { c with expr = { c.expr with node = Expr.EVal { value = VBool (IDist.bitand b1 b2) ; label = Label.join v1.label v2.label } } })
+        match c.expr with
+        | Mixed.ELit l ->
+          (match l.value with
+           | LitUnit () -> IDist.return { c with expr = Mixed.EVal (VUnit (IDist.return ())) }
+           | LitBool b  -> IDist.return { c with expr = Mixed.EVal (VBool { value = (IDist.return b) ; label = l.label }) }
+           | LitInt  n  -> IDist.return { c with expr = Mixed.EVal (VInt  { value = (IDist.return n) ; label = l.label }) })
+        | Mixed.EFlip -> IDist.return { c with n = c.n + 1 ; expr = Mixed.EVal (VFlip (IDist.bit c.n)) }
+        | Mixed.ERnd ->
+          (* TODO(ins): Should parameterize this better *)
+          let bitwidth = 4 in
+          let word = List.init bitwidth ~f:(fun idx -> IDist.bit (c.n + idx)) in
+          IDist.return { c with n = c.n + bitwidth ; expr = Mixed.EVal (VRnd word) }
+        | Mixed.EVar p -> IDist.return { c with expr = Mixed.EVal (lookup c.env p.path) }
+        | Mixed.EBUnOp buo ->
+          (match buo.arg with
+           | Mixed.EVal v ->
+             (match v with
+              | VBool b ->
+                (match buo.op with
+                 | Boolean.Un.Op.Not -> IDist.return { c with expr = Mixed.EVal (VBool { b with value = (IDist.negate b.value) }) })
               | _ -> failwith "Impossible by typing")
            | _ ->
              let open Syntax.Let_syntax in
-             (match step { c with expr = bbo.rhs } with
+             (match step { c with expr = buo.arg } with
               | None -> failwith "Impossible by typing"
               | Some dc' ->
                 let%bind c' = dc' in
-                IDist.return { c' with expr = { c.expr with node = Expr.EBBinOp { bbo with rhs = c'.expr } } }))
-        | _ ->
-          let open Syntax.Let_syntax in
-          (match step { c with expr = bbo.lhs } with
-           | None -> failwith "Impossible by typing"
-           | Some dc' ->
-             let%bind c' = dc' in
-             IDist.return { c' with expr = { c.expr with node = Expr.EBBinOp { bbo with lhs = c'.expr } } })
-      end
-  | Expr.EAUnOp _ -> failwith "TODO"
-  | Expr.EABinOp _ -> failwith "TODO"
-  | Expr.EAUnRel _ -> failwith "TODO"
-  | Expr.EABinRel _ -> failwith "TODO"
-  | Expr.ETuple (lhs, rhs) ->
-    Some
-      begin
-        match lhs.node with
-        | Expr.EVal v1 ->
-          (match rhs.node with
-           | Expr.EVal v2 ->
-             IDist.return { c with expr = { c.expr with node = Expr.EVal { value = VTuple (v1, v2) ; label = Label.meet v1.label v2.label } } }
-           | _ ->
-             let open Syntax.Let_syntax in
-             (match step { c with expr = rhs } with
-              | None -> failwith "Impossible by typing"
-              | Some dc' ->
-                let%bind c' = dc' in
-                IDist.return { c' with expr = { c.expr with node = Expr.ETuple (lhs, c'.expr) } }))
-        | _ ->
-          let open Syntax.Let_syntax in
-          (match step { c with expr = lhs } with
-           | None -> failwith "Impossible by typing"
-           | Some dc' ->
-             let%bind c' = dc' in
-             IDist.return { c' with expr = { c.expr with node = Expr.ETuple (c'.expr, rhs) } })
-      end
-  | Expr.ERecord fields -> failwith "TODO"
-  | Expr.EArrInit spec ->
-    Some
-      begin
-        match spec.size.node with
-        | Expr.EVal vsize ->
-          (match spec.init.node with
-           | Expr.EVal vinit ->
-             (match vsize.value with
-              | VInt dn ->
+                IDist.return { c' with expr = Mixed.EBUnOp { buo with arg = c'.expr } }))
+        | Mixed.EBBinOp bbo ->
+          (match bbo.lhs with
+           | Mixed.EVal v1 ->
+             (match bbo.rhs with
+              | Mixed.EVal v2 ->
+                (match v1, v2 with
+                 | VBool b1, VBool b2 ->
+                   (match bbo.op with
+                    | Boolean.Bin.Op.And -> IDist.return { c with expr = Mixed.EVal (VBool { value = (IDist.bitand b1.value b2.value) ; label = Label.join b1.label b2.label }) })
+                 | _ -> failwith "Impossible by typing")
+              | _ ->
                 let open Syntax.Let_syntax in
-                let%bind n = dn in
-                let l = Loc.fresh () in
-                IDist.return { c with expr = { c.expr with node = Expr.EVal { value = VLoc l ; label = Label.public } }
-                                    ; store = Map.add_exn c.store ~key:l ~data:(Array.init n ~f:(fun _ -> vinit)) }
-              | _ -> failwith "Impossible by typing")
+                (match step { c with expr = bbo.rhs } with
+                 | None -> failwith "Impossible by typing"
+                 | Some dc' ->
+                   let%bind c' = dc' in
+                   IDist.return { c' with expr = Mixed.EBBinOp { bbo with rhs = c'.expr } }))
            | _ ->
              let open Syntax.Let_syntax in
-             (match step { c with expr = spec.init } with
+             (match step { c with expr = bbo.lhs } with
               | None -> failwith "Impossible by typing"
               | Some dc' ->
                 let%bind c' = dc' in
-                IDist.return { c' with expr = { c.expr with node = Expr.EArrInit { spec with init = c'.expr } } }))
-        | _ ->
-          let open Syntax.Let_syntax in
-          (match step { c with expr = spec.size } with
-           | None -> failwith "Impossible by typing"
-           | Some dc' ->
-             let%bind c' = dc' in
-             IDist.return { c' with expr = { c.expr with node = Expr.EArrInit { spec with size = c'.expr } } })
-      end
-  | Expr.EArrRead rd ->
-    Some
-      begin
-        match rd.addr.node with
-        | Expr.EVal vaddr ->
-          (match rd.idx.node with
-           | Expr.EVal vidx ->
-             (match vaddr.value with
-              | VLoc l ->
-                let storev = Map.find_exn c.store l in
-                (match vidx.value with
+                IDist.return { c' with expr = Mixed.EBBinOp { bbo with lhs = c'.expr } }))
+        | Mixed.EAUnOp _ -> failwith "TODO"
+        | Mixed.EABinOp _ -> failwith "TODO"
+        | Mixed.EAUnRel _ -> failwith "TODO"
+        | Mixed.EABinRel _ -> failwith "TODO"
+        | Mixed.ETuple (lhs, rhs) ->
+          (match lhs with
+           | Mixed.EVal v1 ->
+             (match rhs with
+              | Mixed.EVal v2 ->
+                IDist.return { c with expr = Mixed.EVal (VTuple (v1, v2)) }
+              | _ ->
+                let open Syntax.Let_syntax in
+                (match step { c with expr = rhs } with
+                 | None -> failwith "Impossible by typing"
+                 | Some dc' ->
+                   let%bind c' = dc' in
+                   IDist.return { c' with expr = Mixed.ETuple (lhs, c'.expr) }))
+           | _ ->
+             let open Syntax.Let_syntax in
+             (match step { c with expr = lhs } with
+              | None -> failwith "Impossible by typing"
+              | Some dc' ->
+                let%bind c' = dc' in
+                IDist.return { c' with expr = Mixed.ETuple (c'.expr, rhs) }))
+        | Mixed.ERecord fields -> failwith "TODO"
+        | Mixed.EArrInit spec ->
+          (match spec.size with
+           | Mixed.EVal vsize ->
+             (match spec.init with
+              | Mixed.EVal vinit ->
+                (match vsize with
                  | VInt dn ->
                    let open Syntax.Let_syntax in
-                   let%bind n = dn in
-                   IDist.return { c with expr = { c.expr with node = Expr.EVal storev.(n) } }
+                   let%bind n = dn.value in
+                   let l = Loc.fresh () in
+                   IDist.return { c with expr = Mixed.EVal (VLoc l)
+                                       ; store = Map.add_exn c.store ~key:l ~data:(Array.init n ~f:(fun _ -> vinit)) }
                  | _ -> failwith "Impossible by typing")
-              | _ -> failwith "Impossible by typing")
+              | _ ->
+                let open Syntax.Let_syntax in
+                (match step { c with expr = spec.init } with
+                 | None -> failwith "Impossible by typing"
+                 | Some dc' ->
+                   let%bind c' = dc' in
+                   IDist.return { c' with expr = Mixed.EArrInit { spec with init = c'.expr } }))
            | _ ->
              let open Syntax.Let_syntax in
-             (match step { c with expr = rd.idx } with
+             (match step { c with expr = spec.size } with
               | None -> failwith "Impossible by typing"
               | Some dc' ->
                 let%bind c' = dc' in
-                IDist.return { c' with expr = { c.expr with node = Expr.EArrRead { rd with idx = c'.expr } } }))
-        | _ ->
-          let open Syntax.Let_syntax in
-          (match step { c with expr = rd.addr } with
-           | None -> failwith "Impossible by typing"
-           | Some dc' ->
-             let%bind c' = dc' in
-             IDist.return { c' with expr = { c.expr with node = Expr.EArrRead { rd with addr = c'.expr } } })
+                IDist.return { c' with expr = Mixed.EArrInit { spec with size = c'.expr } }))
+        | Mixed.EArrRead rd ->
+          (match rd.addr with
+           | Mixed.EVal vaddr ->
+             (match rd.idx with
+              | Mixed.EVal vidx ->
+                (match vaddr with
+                 | VLoc l ->
+                   let storev = Map.find_exn c.store l in
+                   (match vidx with
+                    | VInt dn ->
+                      let open Syntax.Let_syntax in
+                      let%bind n = dn.value in
+                      IDist.return { c with expr = Mixed.EVal storev.(n) }
+                    | _ -> failwith "Impossible by typing")
+                 | _ -> failwith "Impossible by typing")
+              | _ ->
+                let open Syntax.Let_syntax in
+                (match step { c with expr = rd.idx } with
+                 | None -> failwith "Impossible by typing"
+                 | Some dc' ->
+                   let%bind c' = dc' in
+                   IDist.return { c' with expr = Mixed.EArrRead { rd with idx = c'.expr } }))
+           | _ ->
+             let open Syntax.Let_syntax in
+             (match step { c with expr = rd.addr } with
+              | None -> failwith "Impossible by typing"
+              | Some dc' ->
+                let%bind c' = dc' in
+                IDist.return { c' with expr = Mixed.EArrRead { rd with addr = c'.expr } }))
+        | _ -> failwith "TODO"
       end
-  | _ -> failwith "TODO"
 
 let rec eval' (dt : trace IDist.t) (c : config) : trace IDist.t =
   let open Syntax.Let_syntax in

@@ -179,8 +179,6 @@ let rec static (tenv : env_t) (talias : alias_t) (e : Expr.t) : Type.t * env_t =
     let t_lit = Type.TBase (Literal.to_type l.value, l.label, l.region) in
     (t_lit, tenv)
 
-  | Expr.EVal _ -> failwith "Impossible, values do not appear in source programs"
-
   | Expr.EFlip f ->
     if Region.equiv f.region Region.bottom then
       let msg = "Region annotation cannot be bottom." in

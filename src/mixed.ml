@@ -2,23 +2,15 @@ open Core
 open Stdio
 
 type t =
-  { loc  : Section.t Option.t
-  ; node : t'
-  }
-
-and t' =
   | ELit      of { value  : Literal.t (** Literal *)
                  ; label  : Label.t
-                 ; region : Region.t
                  }
 
-  | EFlip     of { label  : Label.t   (** Random Boolean *)
-                 ; region : Region.t
-                 }
+  | EVal      of value (** Values *)
 
-  | ERnd      of { label  : Label.t  (** Random Integer *)
-                 ; region : Region.t
-                 }
+  | EFlip (** Random Boolean *)
+
+  | ERnd  (** Random Integer *)
 
   | EVar      of { path : Var.t list  (** Variable *)
                  }
@@ -111,3 +103,20 @@ and t' =
                  ; thenb : t
                  ; elseb : t
                  }
+
+and value =
+  | VUnit   of Unit.t IDist.t
+  | VBool   of { value : Bool.t IDist.t
+               ; label : Label.t }
+  | VInt    of { value : Int.t IDist.t
+               ; label : Label.t }
+  | VFlip   of Bool.t IDist.t
+  | VRnd    of (Bool.t IDist.t) List.t
+  | VLoc    of Loc.t
+  | VAbs    of { param : Pattern.t
+               ; body : t}
+  | VRec    of { name : Var.t
+               ; param : Pattern.t
+               ; body : t }
+  | VTuple  of (value, value) Tuple.T2.t
+  | VRecord of (Var.t * value) list
