@@ -140,6 +140,38 @@ let rec step (c : config) : (config IDist.t) Option.t =
              let%bind c' = dc' in
              IDist.return { c' with expr = { c.expr with node = Expr.EArrInit { spec with size = c'.expr } } })
       end
+  | Expr.EArrRead rd ->
+    Some
+      begin
+        match rd.addr.node with
+        | Expr.EVal vaddr ->
+          (match rd.idx.node with
+           | Expr.EVal vidx ->
+             (match vaddr.value with
+              | VLoc l ->
+                let storev = Map.find_exn c.store l in
+                (match vidx.value with
+                 | VInt dn ->
+                   let open Syntax.Let_syntax in
+                   let%bind n = dn in
+                   IDist.return { c with expr = { c.expr with node = Expr.EVal storev.(n) } }
+                 | _ -> failwith "Impossible by typing")
+              | _ -> failwith "Impossible by typing")
+           | _ ->
+             let open Syntax.Let_syntax in
+             (match step { c with expr = rd.idx } with
+              | None -> failwith "Impossible by typing"
+              | Some dc' ->
+                let%bind c' = dc' in
+                IDist.return { c' with expr = { c.expr with node = Expr.EArrRead { rd with idx = c'.expr } } }))
+        | _ ->
+          let open Syntax.Let_syntax in
+          (match step { c with expr = rd.addr } with
+           | None -> failwith "Impossible by typing"
+           | Some dc' ->
+             let%bind c' = dc' in
+             IDist.return { c' with expr = { c.expr with node = Expr.EArrRead { rd with addr = c'.expr } } })
+      end
   | _ -> failwith "TODO"
 
 let rec eval' (dt : trace IDist.t) (c : config) : trace IDist.t =
