@@ -8,79 +8,37 @@ type config = { n     : Int.t
 type trace = config List.t
 
 module Syntax = Monad.Make(IDist)
-(*
+
 let rec of_source (e : Expr.t) : Mixed.t =
   match e.node with
-  | Expr.ELit l -> Mixed.ELit { value = l.value ; label = l.label }
-  | Expr.EFlip _ -> Mixed.EFlip
-  | Expr.ERnd _ -> Mixed.ERnd
-  | Expr.EVar p -> Mixed.EVar { path = p.path }
-  | Expr.EBUnOp b -> Mixed.EBUnOp { op = b.op ; arg = of_source b.arg }
-  | Expr.EBBinOp b -> Mixed.EBBinOp { op = b.op ; lhs = of_source b.lhs ; rhs = of_source b.rhs }
-  | Expr.EAUnOp a -> Mixed.EAUnOp { op = a.op ; arg = of_source a.arg }
-  | EABinOp a -> Mixed.EABinOp { op = a.op ; lhs = of_source a.lhs ; rhs = of_source a.rhs }
-  | EAUnRel a -> Mixed.EAUnRel { rel = a.rel ; arg = of_source a.arg }
-  | EABinRel a -> Mixed.EABinRel { rel = a.rel ; lhs = of_source a.lhs ; rhs = of_source a.rhs }
-  | ETuple (l, r) -> Mixed.ETuple (of_source l, of_source r)
-  | ERecord fields -> Mixed.ERecord (List.map ~f:(fun (x, e) -> (x, of_source e)) fields)
-  | EArrInit  of { size : t   (** Array Initialization *)
-                 ; init : t
-                 }
+  | ELit l -> ELit { value = l.value ; label = l.label }
+  | EFlip _ -> EFlip
+  | ERnd _ -> ERnd
+  | EVar p -> EVar { path = p.path }
+  | EBUnOp b -> EBUnOp { op = b.op ; arg = of_source b.arg }
+  | EBBinOp b -> EBBinOp { op = b.op ; lhs = of_source b.lhs ; rhs = of_source b.rhs }
+  | EAUnOp a -> EAUnOp { op = a.op ; arg = of_source a.arg }
+  | EABinOp a -> EABinOp { op = a.op ; lhs = of_source a.lhs ; rhs = of_source a.rhs }
+  | EAUnRel a -> EAUnRel { rel = a.rel ; arg = of_source a.arg }
+  | EABinRel a -> EABinRel { rel = a.rel ; lhs = of_source a.lhs ; rhs = of_source a.rhs }
+  | ETuple (l, r) -> ETuple (of_source l, of_source r)
+  | ERecord fields -> ERecord (List.map ~f:(fun (x, e) -> (x, of_source e)) fields)
+  | EArrInit sp -> EArrInit { size = of_source sp.size ; init = of_source sp.init }
+  | EArrRead sp -> EArrRead { addr = of_source sp.addr ; idx = of_source sp.idx }
+  | EArrWrite sp -> EArrWrite { addr = of_source sp.addr ; idx = of_source sp.idx ; value = of_source sp.value }
+  | EArrLen len -> EArrLen (of_source len)
+  | EUse x -> EUse x
+  | EReveal x -> EReveal x
+  | ETrust x -> ETrust x
+  | EProve x -> EProve x
+  | EMux m -> EMux { guard = of_source m.guard ; lhs = of_source m.lhs ; rhs = of_source m.rhs }
+  | EAbs f -> EAbs { param = f.param ; body = of_source f.body }
+  | ERec f -> ERec { name = f.name ; param = f.param ; body = of_source f.body }
+  | EApp ap -> EApp { lam = of_source ap.lam ; arg = of_source ap.arg }
+  | ELet l -> ELet { pat = l.pat ; value = of_source l.value ; body = of_source l.body }
+  | EType t -> of_source t.body
+  | EIf ite -> EIf { guard = of_source ite.guard ; thenb = of_source ite.thenb ; elseb = of_source ite.elseb }
 
-  | EArrRead  of { addr : t   (** Array Read *)
-                 ; idx  : t
-                 }
-
-
-  | EArrWrite of { addr  : t   (** Array Write *)
-                 ; idx   : t
-                 ; value : t
-                 }
-
-  | EArrLen   of t   (** Array Length *)
-
-  | EUse      of Var.t   (** Random -> Secret *)
-
-  | EReveal   of Var.t   (** Random -> Public *)
-
-  | ETrust    of Var.t   (** Random -> Non-Uniform *)
-
-  | EProve    of Var.t   (** Non-Uniform -> Random *)
-
-  | EMux      of { guard : t   (** Mux *)
-                 ; lhs   : t
-                 ; rhs   : t
-                 }
-
-  | EAbs      of { param : Pattern.t   (** Abstraction *)
-                 ; body  : t
-                 }
-
-  | ERec      of { name  : Var.t   (** Recursive Abstraction *)
-                 ; param : Pattern.t
-                 ; body  : t
-                 ; t_ret : Type.t
-                 }
-
-  | EApp      of { lam : t   (** Application *)
-                 ; arg : t
-                 }
-
-  | ELet      of { pat   : Pattern.t   (** Let-Binding *)
-                 ; value : t
-                 ; body  : t
-                 }
-
-  | EType     of { name : Var.t   (** Type Alias *)
-                 ; typ  : Type.t
-                 ; body : t
-                 }
-
-  | EIf       of { guard : t   (** Conditional *)
-                 ; thenb : t
-                 ; elseb : t
-                 }
-*)
 let rec lookup e p : Mixed.value =
   match p with
   | [] -> failwith "Impossible"

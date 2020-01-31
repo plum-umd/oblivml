@@ -82,7 +82,6 @@ type t =
   | ERec      of { name  : Var.t   (** Recursive Abstraction *)
                  ; param : Pattern.t
                  ; body  : t
-                 ; t_ret : Type.t
                  }
 
   | EApp      of { lam : t   (** Application *)
@@ -92,11 +91,6 @@ type t =
   | ELet      of { pat   : Pattern.t   (** Let-Binding *)
                  ; value : t
                  ; body  : t
-                 }
-
-  | EType     of { name : Var.t   (** Type Alias *)
-                 ; typ  : Type.t
-                 ; body : t
                  }
 
   | EIf       of { guard : t   (** Conditional *)
