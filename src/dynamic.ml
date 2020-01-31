@@ -39,6 +39,28 @@ let rec of_source (e : Expr.t) : Mixed.t =
   | EType t -> of_source t.body
   | EIf ite -> EIf { guard = of_source ite.guard ; thenb = of_source ite.thenb ; elseb = of_source ite.elseb }
 
+let compose1 (e : Mixed.t) (k : Mixed.ectx) : (Mixed.t * Mixed.ectx) Option.t =
+  match k with
+  | KHole -> None
+  | KBUnOp buo -> Some (EBUnOp { op = buo.op ; arg = e }, buo.cont)
+  | _ -> failwith "TODO"
+
+let rec decompose (e : Mixed.t) (k : Mixed.ectx) : (Mixed.redex * Mixed.ectx) Option.t =
+  match e with
+  | ELit l -> Some (RLit { value = l.value ; label = l.label }, k)
+  | EVal v ->
+    let open Option.Let_syntax in
+    let%bind (e', k') = compose1 e k in
+    decompose e' k'
+  | EFlip -> Some (RFlip, k)
+  | ERnd -> Some (RRnd, k)
+  | EVar p -> Some (RVar { path = p.path }, k)
+  | EBUnOp buo ->
+    (match buo.arg with
+     | EVal v -> Some (RBUnOp { op = buo.op ; arg = v }, k)
+     | _ -> decompose buo.arg (KBUnOp { op = buo.op ; cont = k }))
+  | _ -> failwith "TODO"
+
 let rec lookup e p : Mixed.value =
   match p with
   | [] -> failwith "Impossible"
