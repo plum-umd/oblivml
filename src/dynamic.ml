@@ -29,8 +29,8 @@ let rec of_source (e : Expr.t) : Mixed.t =
   | EArrLen len -> EArrLen (of_source len)
   | EUse x -> EUse x
   | EReveal x -> EReveal x
-  | ETrust x -> ETrust x
-  | EProve x -> EProve x
+  | ETrust x -> EVar { path = [x] }
+  | EProve x -> EVar { path = [x] }
   | EMux m -> EMux { guard = of_source m.guard ; lhs = of_source m.lhs ; rhs = of_source m.rhs }
   | EAbs f -> EAbs { param = f.param ; body = of_source f.body }
   | ERec f -> ERec { name = f.name ; param = f.param ; body = of_source f.body }
