@@ -66,10 +66,6 @@ type t =
 
   | EReveal   of Var.t   (** Random -> Public *)
 
-  | ETrust    of Var.t   (** Random -> Non-Uniform *)
-
-  | EProve    of Var.t   (** Non-Uniform -> Random *)
-
   | EMux      of { guard : t   (** Mux *)
                  ; lhs   : t
                  ; rhs   : t
@@ -114,3 +110,133 @@ and value =
                ; body : t }
   | VTuple  of (value, value) Tuple.T2.t
   | VRecord of (Var.t * value) list
+
+and ectx =
+  | KHole (** The Hole [] *)
+
+  | KBUnOp of { op   : Boolean.Un.Op.t (** Unary Boolean Operation *)
+              ; cont : ectx
+              }
+
+  | KBBinOpL of { op   : Boolean.Bin.Op.t (** Binary Boolean Operation (Left Evaluation) *)
+                ; cont : ectx
+                ; rhs  : t
+                }
+
+  | KBBinOpR of { op   : Boolean.Bin.Op.t (** Binary Boolean Operation (Right Evaluation) *)
+                ; lhs  : value
+                ; cont : ectx
+                }
+
+  | KAUnOp of { op   : Arith.Un.Op.t (** Unary Arithmetic Operation *)
+              ; cont : ectx
+              }
+
+  | KABinOpL of { op   : Arith.Bin.Op.t (** Binary Arithmetic Operation (Left Evaluation) *)
+                ; cont : ectx
+                ; rhs  : t
+                }
+
+  | KABinOpR of { op   : Arith.Bin.Op.t   (** Binary Arithmetic Operation (Right Evaluation) *)
+                ; lhs  : value
+                ; cont : ectx
+                }
+
+  | KAUnRel of { rel  : Arith.Un.Rel.t   (** Unary Arithmetic Relation *)
+               ; cont : ectx
+               }
+
+  | KABinRelL of { rel  : Arith.Bin.Rel.t   (** Binary Arithmetic Relation (Left Evaluation) *)
+                 ; cont : ectx
+                 ; rhs  : t
+                 }
+
+  | KABinRelR of { rel  : Arith.Bin.Rel.t   (** Binary Arithmetic Relation (Right Evaluation) *)
+                 ; lhs  : value
+                 ; cont : ectx
+                 }
+
+  | KTupleL of (ectx, t) Tuple.T2.t   (** Tuple (Left Evaluation) *)
+
+  | KTupleR of (value, ectx) Tuple.T2.t   (** Tuple (Right Evaluation) *)
+
+  | KRecord of value List.t * ectx * t List.t (** Record (Left to Right Evaluation) *)
+
+  | KArrInitSz of { cont : ectx
+                  ; init : t
+                  }
+
+  | KArrInitV of { size : value
+                 ; cont : ectx
+                 }
+
+  | KArrReadAddr of { cont : ectx
+                    ; idx : t
+                    }
+
+  | KArrReadIdx of { addr : value
+                   ; cont : ectx
+                   }
+
+  | KArrWriteAddr of { cont : ectx
+                     ; idx : t
+                     ; value : t }
+
+  | KArrWriteIdx of { addr : value
+                    ; cont : ectx
+                    ; value : t
+                    }
+
+  | KArrWriteVal of { addr : value
+                    ; idx : value
+                    ; cont : ectx
+                    }
+
+  | KArrLen of { cont : ectx }
+
+  | KMuxGuard of { cont : ectx
+                 ; lhs : t
+                 ; rhs : t
+                 }
+
+  | KMuxL of { guard : value
+             ; cont : ectx
+             ; rhs : t
+             }
+
+  | KMuxR of { guard : value
+             ; lhs : value
+             ; cont : ectx
+             }
+
+  | KAbs of { param : Pattern.t
+            ; cont : ectx
+            }
+
+  | KRec of { name : Var.t
+            ; param : Pattern.t
+            ; cont : ectx
+            }
+
+  | KAppF of { cont : ectx
+             ; arg : t
+             }
+
+  | KAppA of { lam  : value
+             ; cont : ectx
+             }
+
+  | KLetV of { pat : Pattern.t
+             ; cont : ectx
+             ; body : t
+             }
+
+  | KLetB of { pat : Pattern.t
+             ; value : value
+             ; cont : ectx
+             }
+
+  | KIfG of { cont : ectx
+            ; thenb : t
+            ; elseb : t
+            }
