@@ -9,6 +9,7 @@ type trace = config List.t
 
 module Syntax = Monad.Make(IDist)
 
+(** Erase a source term into a runtime term *)
 let rec of_source (e : Expr.t) : Mixed.t =
   match e.node with
   | ELit l -> ELit { value = l.value ; label = l.label }
@@ -39,16 +40,43 @@ let rec of_source (e : Expr.t) : Mixed.t =
   | EType t -> of_source t.body
   | EIf ite -> EIf { guard = of_source ite.guard ; thenb = of_source ite.thenb ; elseb = of_source ite.elseb }
 
+(** Pop an evaluation context from the stack, and plug `e` into it *)
 let compose1 (e : Mixed.t) (k : Mixed.ectx) : (Mixed.t * Mixed.ectx) Option.t =
   match k with
   | KHole -> None
   | KBUnOp buo -> Some (EBUnOp { op = buo.op ; arg = e }, buo.cont)
-  | _ -> failwith "TODO"
+  | KBBinOpL bbo -> Some (EBBinOp { op = bbo.op ; lhs = e ; rhs = bbo.rhs }, bbo.cont)
+  | KBBinOpR bbo -> Some (EBBinOp { op = bbo.op ; lhs = EVal bbo.lhs ; rhs = e }, bbo.cont)
+  | KAUnOp auo -> Some (EAUnOp { op = auo.op ; arg = e }, auo.cont)
+  | KABinOpL abo -> Some (EABinOp { op = abo.op ; lhs = e ; rhs = abo.rhs }, abo.cont)
+  | KABinOpR abo -> Some (EABinOp { op = abo.op ; lhs = EVal abo.lhs ; rhs = e }, abo.cont)
+  | KAUnRel aur -> Some (EAUnRel { rel = aur.rel ; arg = e }, aur.cont)
+  | KABinRelL abr -> Some (EABinRel { rel = abr.rel ; lhs = e ; rhs = abr.rhs }, abr.cont)
+  | KABinRelR abr -> Some (EABinRel { rel = abr.rel ; lhs = EVal abr.lhs ; rhs = e }, abr.cont)
+  | KTupleL (cont, r) -> Some (ETuple (e, r), cont)
+  | KTupleR (l, cont) -> Some (ETuple (EVal l, e), cont)
+  | KRecord (vs, (x, cont), es) -> Some (ERecord ((List.map ~f:(fun (x, v) -> (x, Mixed.EVal v)) vs) @ [(x, e)] @ es), cont)
+  | KArrInitSz sz -> Some (EArrInit { size = e ; init = sz.init }, sz.cont)
+  | KArrInitV v -> Some (EArrInit { size = EVal v.size ; init = e }, v.cont)
+  | KArrReadAddr rd -> Some (EArrRead { addr = e ; idx = rd.idx }, rd.cont)
+  | KArrReadIdx rd -> Some (EArrRead { addr = EVal rd.addr ; idx = e }, rd.cont)
+  | KArrWriteAddr wr -> Some (EArrWrite { addr = e ; idx = wr.idx ; value = wr.value }, wr.cont)
+  | KArrWriteIdx wr -> Some (EArrWrite { addr = EVal wr.addr ; idx = e ; value = wr.value }, wr.cont)
+  | KArrWriteVal wr -> Some (EArrWrite { addr = EVal wr.addr ; idx = EVal wr.idx ; value = e }, wr.cont)
+  | KArrLen l -> Some (EArrLen e, l.cont)
+  | KMuxGuard m -> Some (EMux { guard = e ; lhs = m.lhs ; rhs = m.rhs }, m.cont)
+  | KMuxL m -> Some (EMux { guard = EVal m.guard ; lhs = e ; rhs = m.rhs }, m.cont)
+  | KMuxR m -> Some (EMux { guard = EVal m.guard ; lhs = EVal m.lhs ; rhs = e }, m.cont)
+  | KAppF ap -> Some (EApp { lam = e ; arg = ap.arg }, ap.cont)
+  | KAppA ap -> Some (EApp { lam = EVal ap.lam ; arg = e }, ap.cont)
+  | KLet l -> Some (ELet { pat = l.pat ; value = e ; body = l.body }, l.cont)
+  | KIf ite -> Some (EIf { guard = e ; thenb = ite.thenb ; elseb = ite.elseb }, ite.cont)
 
+(** Decompose an `e` into a redex and an evaluation stack *)
 let rec decompose (e : Mixed.t) (k : Mixed.ectx) : (Mixed.redex * Mixed.ectx) Option.t =
   match e with
   | ELit l -> Some (RLit { value = l.value ; label = l.label }, k)
-  | EVal v ->
+  | EVal v -> (* I don't really want this here, but it is fine for now *)
     let open Option.Let_syntax in
     let%bind (e', k') = compose1 e k in
     decompose e' k'
@@ -59,7 +87,112 @@ let rec decompose (e : Mixed.t) (k : Mixed.ectx) : (Mixed.redex * Mixed.ectx) Op
     (match buo.arg with
      | EVal v -> Some (RBUnOp { op = buo.op ; arg = v }, k)
      | _ -> decompose buo.arg (KBUnOp { op = buo.op ; cont = k }))
-  | _ -> failwith "TODO"
+  | EBBinOp bbo ->
+    (match bbo.lhs with
+     | EVal v1 ->
+       (match bbo.rhs with
+        | EVal v2 -> Some (RBBinOp { op = bbo.op ; lhs = v1 ; rhs = v2 }, k)
+        | _ -> decompose bbo.rhs (KBBinOpR { op = bbo.op ; lhs = v1 ; cont = k }))
+     | _ -> decompose bbo.lhs (KBBinOpL { op = bbo.op ; cont = k ; rhs = bbo.rhs }))
+  | EAUnOp auo ->
+    (match auo.arg with
+     | EVal v -> Some (RAUnOp { op = auo.op ; arg = v }, k)
+     | _ -> decompose auo.arg (KAUnOp { op = auo.op ; cont = k}))
+  | EABinOp abo ->
+    (match abo.lhs with
+     | EVal v1 ->
+       (match abo.rhs with
+        | EVal v2 -> Some (RABinOp { op = abo.op ; lhs = v1 ; rhs = v2 }, k)
+        | _ -> decompose abo.rhs (KABinOpR { op = abo.op ; lhs = v1 ; cont = k }))
+     | _ -> decompose abo.lhs (KABinOpL { op = abo.op ; cont = k ; rhs = abo.rhs }))
+  | EAUnRel aur ->
+    (match aur.arg with
+     | EVal v -> Some (RAUnRel { rel = aur.rel ; arg = v }, k)
+     | _ -> decompose aur.arg (KAUnRel { rel = aur.rel ; cont = k }))
+  | EABinRel abr ->
+    (match abr.lhs with
+     | EVal v1 ->
+       (match abr.rhs with
+        | EVal v2 -> Some (RABinRel { rel = abr.rel ; lhs = v1 ; rhs = v2 }, k)
+        | _ -> decompose abr.rhs (KABinRelR { rel = abr.rel ; lhs = v1 ; cont = k }))
+     | _ -> decompose abr.lhs (KABinRelL { rel = abr.rel ; cont = k ; rhs = abr.rhs }))
+  | ETuple (l, r) ->
+    (match l with
+     | EVal v1 ->
+       (match r with
+        | EVal v2 -> Some (RTuple (v1, v2), k)
+        | _ -> decompose r (KTupleR (v1, k)))
+     | _ -> decompose l (KTupleL (k, r)))
+  | ERecord fields ->
+    let (vals, exprs) = List.split_while ~f:(fun (_, e) -> match e with | EVal _ -> true | _ -> false) fields in
+    let vals =
+      List.map
+        ~f:(fun (x, e) ->
+            match e with
+            | EVal v -> (x, v)
+            | _ -> failwith "Impossible by `split_while` above")
+        vals
+    in
+    (match exprs with
+     | [] -> Some (RRecord vals, k)
+     | (x, e) :: exprs -> decompose e (KRecord (vals, (x, k), exprs)))
+  | EArrInit sp ->
+    (match sp.size with
+     | EVal vsize ->
+       (match sp.init with
+        | EVal vinit -> Some (RArrInit { size = vsize ; init = vinit }, k)
+        | _ -> decompose sp.init (KArrInitV { size = vsize ; cont = k }))
+     | _ -> decompose sp.size (KArrInitSz { cont = k ; init = sp.init }))
+  | EArrRead sp ->
+    (match sp.addr with
+     | EVal vaddr ->
+       (match sp.idx with
+        | EVal vidx -> Some (RArrRead { addr = vaddr ; idx = vidx }, k)
+        | _ -> decompose sp.idx (KArrReadIdx { addr = vaddr ; cont = k }))
+     | _ -> decompose sp.addr (KArrReadAddr { cont = k ; idx = sp.idx }))
+  | EArrWrite sp ->
+    (match sp.addr with
+     | EVal vaddr ->
+       (match sp.idx with
+        | EVal vidx ->
+          (match sp.value with
+           | EVal v -> Some (RArrWrite { addr = vaddr ; idx = vidx ; value = v }, k)
+           | _ -> decompose sp.value (KArrWriteVal { addr = vaddr ; idx = vidx ; cont = k }))
+        | _ -> decompose sp.idx (KArrWriteIdx { addr = vaddr ; cont = k ; value = sp.value }))
+     | _ -> decompose sp.addr (KArrWriteAddr { cont = k ; idx = sp.idx ; value = sp.value }))
+  | EArrLen l ->
+    (match l with
+     | EVal v -> Some (RArrLen v, k)
+     | _ -> decompose l (KArrLen { cont = k }))
+  | EUse x -> Some (RUse x, k)
+  | EReveal x -> Some (RReveal x, k)
+  | EMux m ->
+    (match m.guard with
+     | EVal vguard ->
+       (match m.lhs with
+        | EVal vlhs ->
+          (match m.rhs with
+           | EVal vrhs -> Some (RMux { guard = vguard ; lhs = vlhs ; rhs = vrhs }, k)
+           | _ -> decompose m.rhs (KMuxR { guard = vguard ; lhs = vlhs ; cont = k }))
+        | _ -> decompose m.lhs (KMuxL { guard = vguard ; cont = k ; rhs = m.rhs }))
+     | _ -> decompose m.guard (KMuxGuard { cont = k ; lhs = m.lhs ; rhs = m.rhs }))
+  | EAbs a -> Some (RAbs { param = a.param ; body = a.body }, k)
+  | ERec r -> Some (RRec { name = r.name ; param = r.param ; body = r.body }, k)
+  | EApp ap ->
+    (match ap.lam with
+     | EVal vf ->
+       (match ap.arg with
+        | EVal varg -> Some (RApp { lam = vf ; arg = varg }, k)
+        | _ -> decompose ap.arg (KAppA { lam = vf ; cont = k }))
+     | _ -> decompose ap.lam (KAppF { cont = k ; arg = ap.arg }))
+  | ELet l ->
+    (match l.value with
+     | EVal v -> Some (RLet { pat = l.pat ; value = v ; body = l.body }, k)
+     | _ -> decompose l.value (KLet { pat = l.pat ; cont = k ; body = l.body }))
+  | EIf ite ->
+    (match ite.guard with
+     | EVal v -> Some (RIf { guard = v ; thenb = ite.thenb ; elseb = ite.elseb }, k)
+     | _ -> decompose ite.guard (KIf { cont = k ; thenb = ite.thenb ; elseb = ite.elseb }))
 
 let rec lookup e p : Mixed.value =
   match p with

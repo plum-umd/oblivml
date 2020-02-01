@@ -250,7 +250,7 @@ type ectx =
 
   | KTupleR of (value, ectx) Tuple.T2.t   (** Tuple (Right Evaluation) *)
 
-  | KRecord of value List.t * ectx * t List.t (** Record (Left to Right Evaluation) *)
+  | KRecord of (Var.t * value) List.t * (Var.t * ectx) * (Var.t * t) List.t (** Record (Left to Right Evaluation) *)
 
   | KArrInitSz of { cont : ectx
                   ; init : t
@@ -299,15 +299,6 @@ type ectx =
              ; cont : ectx
              }
 
-  | KAbs of { param : Pattern.t
-            ; cont : ectx
-            }
-
-  | KRec of { name : Var.t
-            ; param : Pattern.t
-            ; cont : ectx
-            }
-
   | KAppF of { cont : ectx
              ; arg : t
              }
@@ -316,17 +307,12 @@ type ectx =
              ; cont : ectx
              }
 
-  | KLetV of { pat : Pattern.t
-             ; cont : ectx
-             ; body : t
-             }
-
-  | KLetB of { pat : Pattern.t
-             ; value : value
-             ; cont : ectx
-             }
-
-  | KIfG of { cont : ectx
-            ; thenb : t
-            ; elseb : t
+  | KLet of { pat : Pattern.t
+            ; cont : ectx
+            ; body : t
             }
+
+  | KIf of { cont : ectx
+           ; thenb : t
+           ; elseb : t
+           }
