@@ -22,13 +22,13 @@ let merge_disjoint m1 m2 =
           | `Right v2    -> (Some v2)
           | `Both (_, _) -> raise (BindingError (x, "duplicate binding")))
 
-let rec get_binders p t =
+let rec bind_type p t =
   match p, t with
   | (XWild, _)                              -> Map.empty (module Var)
   | (XVar x, _)                             -> Map.singleton (module Var) x (Some t)
   | (XTuple (p1, p2), Type.TTuple (t1, t2)) ->
-    let bs1 = get_binders p1 t1 in
-    let bs2 = get_binders p2 t2 in
+    let bs1 = bind_type p1 t1 in
+    let bs2 = bind_type p2 t2 in
     merge_disjoint bs1 bs2
   | (XRecord ps, Type.TRecord bindings)     ->
     List.fold
@@ -40,10 +40,10 @@ let rec get_binders p t =
           | Some v ->
             (match v with
              | None    -> raise (BindingError (f, "field has already been consumed."))
-             | Some ti -> merge_disjoint m (get_binders pi ti)))
+             | Some ti -> merge_disjoint m (bind_type pi ti)))
   | (XAscr (p', t_assert), t') ->
     if Type.equal t_assert t' then
-      get_binders p' t'
+      bind_type p' t'
     else
       raise (AscriptionError (t_assert, t'))
   | _ ->

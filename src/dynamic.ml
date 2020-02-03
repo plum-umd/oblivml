@@ -1,6 +1,6 @@
 open Core
 
-type env = (Var.t, Mixed.value, Var.comparator_witness) Map.t
+type env = (Var.t, Mixed.value Ref.t, Var.comparator_witness) Map.t
 type store = (Loc.t, Mixed.value Array.t, Loc.comparator_witness) Map.t
 
 type config = { n     : Int.t
@@ -199,18 +199,44 @@ let rec decompose (e : Mixed.t) (k : Mixed.ectx) : (Mixed.redex * Mixed.ectx) Op
      | EVal v -> Some (RIf { guard = v ; thenb = ite.thenb ; elseb = ite.elseb }, k)
      | _ -> decompose ite.guard (KIf { cont = k ; thenb = ite.thenb ; elseb = ite.elseb }))
 
-let rec lookup e p : Mixed.value =
-  match p with
-  | [] -> failwith "Impossible"
-  | var :: path ->
-    List.fold_left
-      ~init:(Map.find_exn e var)
-      ~f:(fun acc x ->
-          match acc with
-          | Mixed.VRecord fields -> let m = Map.of_alist_exn (module Var) fields in Map.find_exn m x
-          | _ -> failwith "Not a record")
-      p
+let rec lookup v p : Mixed.value =
+  List.fold_left
+    ~init:v
+    ~f:(fun acc field ->
+        match acc with
+        | Mixed.VRecord fields -> let m = Map.of_alist_exn (module Var) fields in Map.find_exn m field
+        | _ -> failwith "Attempt to lookup field in non-record")
+    p
 
+let merge_disjoint m1 m2 =
+  Map.merge
+      m1
+      m2
+      ~f:(fun ~key:x v ->
+          match v with
+          | `Left v  -> Some v
+          | `Right v -> Some v
+          | `Both _  -> failwith "Maps not disjoint")
+
+let rec bind_value (p : Pattern.t) v =
+  match p, v with
+  | (XWild, _)                              -> Map.empty (module Var)
+  | (XVar x, _)                             -> Map.singleton (module Var) x (ref v)
+  | (XTuple (p1, p2), Mixed.VTuple (v1, v2)) ->
+    let bs1 = bind_value p1 v1 in
+    let bs2 = bind_value p2 v2 in
+    merge_disjoint bs1 bs2
+  | (XRecord ps, Mixed.VRecord bindings)     ->
+    List.fold2_exn
+      ~init:(Map.empty (module Var))
+      ~f:(fun acc (x, p) (y, v) ->
+          assert(Var.equal x y); (* Sanity check *)
+          let bs = bind_value p v in
+          merge_disjoint acc bs)
+      ps
+      bindings
+  | (XAscr (p', _), v) -> bind_value p' v
+  | _ -> failwith "Pattern did not match value"
 
 let step_redex n env store (r : Mixed.redex) =
   match r with
@@ -235,7 +261,12 @@ let step_redex n env store (r : Mixed.redex) =
         word
     in
     IDist.return (n + bitwidth, env, store, Mixed.EVal (Mixed.VRnd (IDist.return n)))
-  | RVar p -> IDist.return (n, env, store, Mixed.EVal (lookup env p.path))
+  | RVar p ->
+    (match p.path with
+     | [] -> failwith "Impossible"
+     | x :: fields ->
+       let v = !(Map.find_exn env x) in
+       IDist.return (n, env, store, Mixed.EVal (lookup v fields)))
   | RBUnOp buo ->
     (match buo.arg with
      | VBool b ->
@@ -246,12 +277,27 @@ let step_redex n env store (r : Mixed.redex) =
     (match bbo.lhs, bbo.rhs with
         | VBool b1, VBool b2 ->
           (match bbo.op with
-           | Boolean.Bin.Op.And -> IDist.return (n, env, store, Mixed.EVal (Mixed.VBool { value = (IDist.bitand b1.value b2.value) ; label = Label.join b1.label b2.label })))
+           | Boolean.Bin.Op.And -> IDist.return (n, env, store, Mixed.EVal (Mixed.VBool { value = (IDist.logand b1.value b2.value) ; label = Label.join b1.label b2.label })))
         | _ -> failwith "Impossible by typing")
-  | RAUnOp _ -> failwith "TODO"
-  | RABinOp _ -> failwith "TODO"
-  | RAUnRel _ -> failwith "TODO"
-  | RABinRel _ -> failwith "TODO"
+  | RAUnOp _ -> failwith "Unimplemented"
+  | RABinOp abo ->
+    (match abo.lhs, abo.rhs with
+     | VInt n1, VInt n2 ->
+       (match abo.op with
+        | Arith.Bin.Op.Add -> IDist.return (n, env, store, Mixed.EVal (Mixed.VInt { value = (IDist.add n1.value n2.value) ; label = Label.join n1.label n2.label }))
+        | Arith.Bin.Op.Subtract -> IDist.return (n, env, store, Mixed.EVal (Mixed.VInt { value = (IDist.sub n1.value n2.value) ; label = Label.join n1.label n2.label }))
+        | Arith.Bin.Op.Mult -> IDist.return (n, env, store, Mixed.EVal (Mixed.VInt { value = (IDist.mult n1.value n2.value) ; label = Label.join n1.label n2.label }))
+        | Arith.Bin.Op.Div -> IDist.return (n, env, store, Mixed.EVal (Mixed.VInt { value = (IDist.div n1.value n2.value) ; label = Label.join n1.label n2.label }))
+        | Arith.Bin.Op.Mod -> IDist.return (n, env, store, Mixed.EVal (Mixed.VInt { value = (IDist.modulus n1.value n2.value) ; label = Label.join n1.label n2.label }))
+        | Arith.Bin.Op.And -> IDist.return (n, env, store, Mixed.EVal (Mixed.VInt { value = (IDist.bitand n1.value n2.value) ; label = Label.join n1.label n2.label })))
+     | _ -> failwith "Impossible by typing")
+  | RAUnRel _ -> failwith "Unimplemented"
+  | RABinRel abr ->
+    (match abr.lhs, abr.rhs with
+     | VInt n1, VInt n2 ->
+       (match abr.rel with
+        | Arith.Bin.Rel.Equal -> IDist.return (n, env, store, Mixed.EVal (Mixed.VBool { value = (IDist.inteq n1.value n2.value) ; label = Label.join n1.label n2.label })))
+     | _ -> failwith "Impossible by typing")
   | RTuple (lhs, rhs) -> IDist.return (n, env, store, Mixed.EVal (Mixed.VTuple (lhs, rhs)))
   | RRecord fields -> IDist.return (n, env, store, Mixed.EVal (Mixed.VRecord fields))
   | RArrInit sp ->
@@ -288,13 +334,13 @@ let step_redex n env store (r : Mixed.redex) =
        IDist.return (n, env, store, Mixed.EVal (Mixed.VInt { value = IDist.return (Array.length storev) ; label = Label.public }))
      | _ -> failwith "Impossible by typing")
   | RUse x ->
-    let v = Map.find_exn env x in
+    let v = !(Map.find_exn env x) in
     (match v with
      | VFlip b -> IDist.return (n, env, store, Mixed.EVal (Mixed.VBool { value = b ; label = Label.secret }))
      | VRnd r -> IDist.return (n, env, store, Mixed.EVal (Mixed.VInt { value = r ; label = Label.secret }))
      | _ -> failwith "Impossible by typing")
   | RReveal x ->
-    let v = Map.find_exn env x in
+    let v = !(Map.find_exn env x) in
     (match v with
      | VFlip b ->
        let open Syntax.Let_syntax in
@@ -310,14 +356,47 @@ let step_redex n env store (r : Mixed.redex) =
      | VBool bguard -> failwith "TODO"
      | _ -> failwith "Impossible by typing")
   | RAbs lam -> IDist.return (n, env, store, Mixed.EVal (Mixed.VAbs { env = env ; param = lam.param ; body = lam.body }))
-  | RRec lam -> IDist.return (n, env, store, Mixed.EVal (Mixed.VRec { env = env ; name = lam.name ; param = lam.param ; body = lam.body }))
-(*  | RApp ap ->
+  | RRec lam ->
+    let bogus : Mixed.value Ref.t = ref (failwith "bogus") in
+    let f = Mixed.VAbs { env = Map.set env ~key:lam.name ~data:bogus ; param = lam.param ; body = lam.body } in
+    bogus := f;
+    IDist.return (n, env, store, Mixed.EVal f)
+  | RApp ap ->
     (match ap.lam with
      | VAbs abs ->
-       let env' = failwith "TODO" in
-       IDist.return (n, env', store, abs.body))
-     let env' = failwith "TODO" in *)
-  | _ -> failwith "TODO"
+       let binds = bind_value abs.param ap.arg in
+       let env' =
+         Map.merge
+           abs.env
+           binds
+           ~f:(fun ~key:k lr ->
+               match lr with
+               | `Left v  -> Some v
+               | `Right v -> Some v
+               | `Both _  -> failwith "Shadowed variable, that's not allowed.")
+       in
+       IDist.return (n, env', store, abs.body)
+     | _ -> failwith "Impossible by typing")
+  | RLet b ->
+    let binds = bind_value b.pat b.value in
+    let env' =
+      Map.merge
+        env
+        binds
+        ~f:(fun ~key:k lr ->
+            match lr with
+            | `Left v  -> Some v
+            | `Right v -> Some v
+            | `Both _  -> failwith "Shadowed variable, that's not allowed.")
+    in
+    IDist.return (n, env', store, b.body)
+  | RIf ite ->
+    (match ite.guard with
+     | VBool b ->
+       let open Syntax.Let_syntax in
+       let%bind g = b.value in
+       if g then IDist.return (n, env, store, ite.thenb) else IDist.return (n, env, store, ite.elseb)
+     | _ -> failwith "Impossible by typing")
 
 let step (c : config) : (config IDist.t) Option.t =
   Option.bind

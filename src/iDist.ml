@@ -16,7 +16,21 @@ let pi2 a =
 
 let negate (x : Bool.t t) : (Bool.t t) = failwith "TODO"
 
-let bitand (x : Bool.t t) (y : Bool.t t) = failwith "TODO"
+let logand (x : Bool.t t) (y : Bool.t t) = failwith "TODO"
+
+let add (x : Int.t t) (y : Int.t t) = failwith "TODO"
+
+let sub (x : Int.t t) (y : Int.t t) = failwith "TODO"
+
+let mult x y = failwith "TODO"
+
+let div x y = failwith "TODO"
+
+let modulus x y = failwith "TODO"
+
+let bitand x y = failwith "TODO"
+
+let inteq x y = failwith "TODO"
 
 let rec bit n =
   match n with

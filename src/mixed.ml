@@ -103,13 +103,9 @@ and value =
   | VFlip   of Bool.t IDist.t
   | VRnd    of Int.t IDist.t
   | VLoc    of Loc.t
-  | VAbs    of { env : (Var.t, value, Var.comparator_witness) Map.t
+  | VAbs    of { env : (Var.t, value Ref.t, Var.comparator_witness) Map.t
                ; param : Pattern.t
                ; body : t}
-  | VRec    of { env : (Var.t, value, Var.comparator_witness) Map.t
-               ; name : Var.t
-               ; param : Pattern.t
-               ; body : t }
   | VTuple  of (value, value) Tuple.T2.t
   | VRecord of (Var.t * value) list
 
