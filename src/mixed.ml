@@ -101,11 +101,13 @@ and value =
   | VInt    of { value : Int.t IDist.t
                ; label : Label.t }
   | VFlip   of Bool.t IDist.t
-  | VRnd    of (Bool.t IDist.t) List.t
+  | VRnd    of Int.t IDist.t
   | VLoc    of Loc.t
-  | VAbs    of { param : Pattern.t
+  | VAbs    of { env : (Var.t, value, Var.comparator_witness) Map.t
+               ; param : Pattern.t
                ; body : t}
-  | VRec    of { name : Var.t
+  | VRec    of { env : (Var.t, value, Var.comparator_witness) Map.t
+               ; name : Var.t
                ; param : Pattern.t
                ; body : t }
   | VTuple  of (value, value) Tuple.T2.t
