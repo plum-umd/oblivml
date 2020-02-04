@@ -122,7 +122,6 @@ let option_to_string m f =
   | Some v -> f v
 
 let rec mux_merge loc l_guard r_guard t1 t2 =
-
   match t1, t2 with
   | Type.TBase (tb1, l1, r1), Type.TBase (tb2, l2, r2) when Type.Base.equal tb1 tb2 ->
     let kind = Type.Base.accessible tb1 in

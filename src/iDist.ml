@@ -32,6 +32,8 @@ let bitand x y = failwith "TODO"
 
 let inteq x y = failwith "TODO"
 
+let cond g v1 v2 = failwith "TODO"
+
 let rec bit n =
   match n with
   | 0 -> Choice (Outcome true, Outcome false)

@@ -238,12 +238,43 @@ let rec bind_value (p : Pattern.t) v =
   | (XAscr (p', _), v) -> bind_value p' v
   | _ -> failwith "Pattern did not match value"
 
+let rec mux_values g l (v1 : Mixed.value) (v2 : Mixed.value) : Mixed.value * Mixed.value =
+  match v1, v2 with
+  | VUnit, VUnit       -> (VUnit, VUnit)
+  | VBool b1, VBool b2 ->
+    let l' = Label.join l (Label.join b1.label b2.label) in
+    (VBool { value = IDist.cond g b1.value b2.value ; label = l' }, VBool { value = IDist.cond g b2.value b1.value ; label = l' })
+  | VInt n1, VInt n2 ->
+    let l' = Label.join l (Label.join n1.label n2.label) in
+    (VInt { value = IDist.cond g n1.value n2.value ; label = l' }, VInt { value = IDist.cond g n2.value n1.value ; label = l' })
+  | VFlip f1, VFlip f2 ->
+    (VFlip (IDist.cond g f1 f2), VFlip (IDist.cond g f2 f1))
+  | VRnd r1, VRnd r2 ->
+    (VRnd (IDist.cond g r1 r2), VRnd (IDist.cond g r2 r1))
+  | VTuple (v11, v12), VTuple (v21, v22) ->
+    let (l1, l2) = mux_values g l v11 v21 in
+    let (r1, r2) = mux_values g l v12 v22 in
+    (VTuple (l1, r1), VTuple (l2, r2))
+  | VRecord fields1, VRecord fields2 ->
+    let (fields1', fields2') =
+      List.fold2_exn
+        ~init:([], [])
+        ~f:(fun (left, right) (x, v1) (_, v2) ->
+            let (curr1, curr2) = mux_values g l v1 v2 in
+            ((x, curr1) :: left, (x, curr2) :: right))
+        fields1
+        fields2
+    in
+    (VRecord (List.rev fields1'), VRecord (List.rev fields2'))
+  | _ -> failwith "Different kinds of values in mux, or unsupported data type"
+
+
 let step_redex n env store (r : Mixed.redex) =
   match r with
   | RLit l ->
     let (v : Mixed.value) =
       match l.value with
-      | LitUnit () -> VUnit (IDist.return ())
+      | LitUnit () -> VUnit
       | LitBool b  -> VBool { value = (IDist.return b) ; label = l.label }
       | LitInt n -> VInt { value = (IDist.return n) ; label = l.label }
     in
@@ -353,7 +384,8 @@ let step_redex n env store (r : Mixed.redex) =
      | _ -> failwith "Impossible by typing")
   | RMux mux ->
     (match mux.guard with
-     | VBool bguard -> failwith "TODO"
+     | VBool bguard ->
+       IDist.return (n, env, store, Mixed.EVal (Mixed.VTuple (mux_values bguard.value bguard.label mux.lhs mux.rhs)))
      | _ -> failwith "Impossible by typing")
   | RAbs lam -> IDist.return (n, env, store, Mixed.EVal (Mixed.VAbs { env = env ; param = lam.param ; body = lam.body }))
   | RRec lam ->

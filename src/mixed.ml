@@ -95,7 +95,7 @@ type t =
                  }
 
 and value =
-  | VUnit   of Unit.t IDist.t
+  | VUnit
   | VBool   of { value : Bool.t IDist.t
                ; label : Label.t }
   | VInt    of { value : Int.t IDist.t
