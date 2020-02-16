@@ -118,6 +118,9 @@ rule token = parse
   (** Array Length *)
   | "length"   { TLENGTH }
 
+  (** Printing *)
+  | "print"    { TPRINT }
+
   (** Random -> Secret (Use) *)
   | "use"      { TUSE }
 

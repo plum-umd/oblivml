@@ -22,7 +22,7 @@ let rec pow_2 (n : int<public, _|_>) : int<public, _|_> =
   if n = 0<public, _|_> then
     1<public, _|_>
   else
-    2<public, _|_> * (pow_2 (n + 1<public, _|_>))
+    2<public, _|_> * (pow_2 (n - 1<public, _|_>))
 in
 
 (***********************
@@ -104,7 +104,7 @@ in
  ******************)
 
 let trivial_init (size : int<public, _|_>) =
-  array(size)[fun (_ : int<public, _|_>) . default_block]
+  array(size)[fun (_ : int<public, _|_>) . default_block ()<public, _|_>]
 in
 
 let trivial_rr' (toram : trivial_oram) (idx : int<secret, _|_>) =
@@ -353,4 +353,15 @@ let stackop (ostack : ostack) (ispush : bool<secret, _|_>) (data : user_data) =
   res.ostack_val
 in
 
-()<public, _|_>
+(***********
+ ** TESTS **
+ ***********)
+
+let test_basic (_ : unit<public, _|_>) =
+  let ostack = ostack_init 3<public, _|_> 2<public, _|_> in
+  let _ = stackop ostack true<secret, _|_> 5<secret, _|_> in
+  (* let v = stackop ostack false<secret, _|_> -1<secret, _|_> in *)
+  ()<public, _|_>
+in
+
+test_basic ()<public, _|_>

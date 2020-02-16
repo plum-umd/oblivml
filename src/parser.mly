@@ -121,6 +121,9 @@
 /** Array Length */
 %token               TLENGTH
 
+/** Print */
+%token               TPRINT
+
 /** Random -> Secret (Use) */
 %token               TUSE
 
@@ -253,6 +256,7 @@ expr :
                                                                ; value = $6
                                                                }) }
   | TLENGTH TLPAR expr TRPAR { annotate (EArrLen $3) }
+  | TPRINT TLPAR expr TRPAR { annotate (EPrint $3) }
   /** Mux */
   | TMUX TLPAR expr TCOMMA expr TCOMMA expr TRPAR { annotate (EMux { guard = $3
                                                                    ; lhs   = $5

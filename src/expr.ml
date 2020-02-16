@@ -111,3 +111,4 @@ and t' =
                  ; thenb : t
                  ; elseb : t
                  }
+  | EPrint    of t

@@ -31,3 +31,7 @@ module Expr    = Expr
 
 (** Static Semantics *)
 module Static = Static
+
+(** Evaluation Semantics *)
+module Sampling = Sampling
+module Eval = Eval
