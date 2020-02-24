@@ -554,7 +554,7 @@ let rec static (tenv : env_t) (talias : alias_t) (e : Source.t) : Type.t * env_t
      | Pattern.XAscr (p, t_param) ->
        let plus =
          try
-           Pattern.get_binders p t_param
+           Pattern.bind_type p t_param
          with
          | Pattern.PatternError ->
            let msg =
@@ -598,7 +598,7 @@ let rec static (tenv : env_t) (talias : alias_t) (e : Source.t) : Type.t * env_t
      | Pattern.XAscr (p, t_param) ->
        let plus =
          try
-           Map.set (Pattern.get_binders p t_param) recabs.name (Some (Type.TFun (t_param, t_ret')))
+           Map.set (Pattern.bind_type p t_param) recabs.name (Some (Type.TFun (t_param, t_ret')))
          with
          | Pattern.PatternError ->
            let msg =
@@ -663,7 +663,7 @@ let rec static (tenv : env_t) (talias : alias_t) (e : Source.t) : Type.t * env_t
     let (t_value, tenv') = static tenv talias binding.value in
     let plus             =
       try
-        Pattern.get_binders pat' t_value
+        Pattern.bind_type pat' t_value
       with
       | Pattern.PatternError ->
         let msg =
