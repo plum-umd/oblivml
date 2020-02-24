@@ -1,5 +1,4 @@
 open Core
-open Stdio
 
 module Op = struct
   type t =
@@ -9,6 +8,7 @@ module Op = struct
     | Div
     | Mod
     | And
+
 end
 
 module Rel = struct

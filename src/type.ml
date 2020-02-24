@@ -11,9 +11,9 @@ struct
     | TBRInt
     | TBNUBool
     | TBNUInt
-  [@@deriving compare]
+  [@@deriving compare, sexp_of]
 
-  let equal tb1 tb2 = compare tb1 tb2 = 0
+  let equal tb1 tb2 = Int.equal (compare tb1 tb2) 0
 
   let of_string s =
     match s with

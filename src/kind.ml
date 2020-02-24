@@ -14,9 +14,9 @@ let to_string k =
   | Affine    -> "affine"
 
 let equal k1 k2 =
-  match (k1, k2) with
-  | (Affine, Affine) -> true
-  | (Universal, Universal) -> true
+  match k1, k2 with
+  | Affine, Affine -> true
+  | Universal, Universal -> true
   | _ -> false
 
 let order k1 k2 =
