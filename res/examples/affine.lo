@@ -1,9 +1,9 @@
 (** This file demonstrates the utility of the affine types *)
 
 (* `s` is our secret *)
-let s = true<secret, _|_> in
+let s = true<secret> in
 (* `r0` and `r1` are two coin flips *)
-let (r0, r1) = (flip<secret, `r0>, flip<secret, `r1>) in
+let (r0, r1) = (flip<`r0>, flip<`r1>) in
 (* If the secret, `s`, is true then `z` is `r0`, otherwise it's `r1` *)
 let (z, _) = mux (s, r0, r1) in
 (* Revealing the resulting coin, `z`, is fine *)

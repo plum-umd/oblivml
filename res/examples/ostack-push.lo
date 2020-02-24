@@ -1,68 +1,120 @@
 (** Oblivious Stacks *)
 
 (***********************
+ ** Utility Functions **
+ ***********************)
+
+let rec div_2 (n : int<public, _|_>) : int<public, _|_> =
+  if n = 0<public, _|_> then
+    0<public, _|_>
+  else
+    div_2 (n - 2<public, _|_>) + 1<public, _|_>
+in
+
+let rec log_2 (n : int<public, _|_>) : int<public, _|_> =
+  if n = 1<public, _|_> then
+    0<public, _|_>
+  else
+    log_2 (div_2 n) + 1<public, _|_>
+in
+
+let rec pow_2 (n : int<public, _|_>) : int<public, _|_> =
+  if n = 0<public, _|_> then
+    1<public, _|_>
+  else
+    2<public, _|_> * (pow_2 (n + 1<public, _|_>))
+in
+
+(***********************
  ** Type Declarations **
  ***********************)
 
-(** Blocks in the trivial ORAM *)
-type block =
-  Π r_max : int .
-  Σ r     : { _ <= r_max } .    (* There are regions called `r`, `r'` in the `int` domain with r < r' such that ... *)
-  Σ r'    : { r < _ } .
-  { is_some : bool<secret, r>
-  ; idx     : int(r)<secret, r> (* `idx` is equal to `r` and ... *)
-  ; tag     : int<secret, r>    (* the `tag` has region `r` and ... *)
-  ; next    : rint<secret, r'>  (* the `next` pointer in the OStack has region `r'` *)
-  ; data    : int<secret, r>
-  }
-
-type trivial_oram = Π r_max : int . (block r_max) array
+(** Data user is storing *)
+type user_data = int<secret, `r0>
 in
 
-type nr_oram = Π r_max : int . (trivial_oram r_max) array
+(** Data the OStack is storing *)
+type ostack_data =
+  { is_some    : bool<secret, `r0>
+  ; ostack_tag : rint<secret, `r0 \/ `r1>
+  ; ostack_val : user_data
+  }
+in
+
+(** Data the NRORAM is storing *)
+type nr_data =
+  { is_some : bool<secret, `r0>
+  ; nr_tag  : int<secret, `r0>
+  ; nr_val  : ostack_data
+  }
+in
+
+(** Blocks in the trivial ORAM *)
+type block =
+  { is_some : bool<secret, `r0>
+  ; idx     : int<secret, `r0>
+  ; data    : nr_data
+  }
+in
+
+type trivial_oram = block array
+in
+
+type nr_oram = trivial_oram array
 in
 
 type ostack =
-  Σ r_max : int .               (* There is some region called `r` in the `int` domain such that ... *)
-  { oram  : nr_oram r_max
-  ; idx_r : int(r_max)<secret>  (* `idx_r` is equal to `r` and ... *)
-  ; tag_r : rint<secret, r>     (* `tag_r` has region `r` *)
+  { oram  : nr_oram
+  ; idx_r : int<secret, `r0> array
+  ; tag_r : rint<secret, `r0 \/ `r1> array
   }
+in
 
 (********************
  ** Default Values **
  ********************)
 
-let default_block () : block =
-  Π r : int .
-  let term =
-    { is_some = false<secret, -1>
-    ; idx     = -1<secret>
-    ; tag     = rnd<secret, -1>
-    ; next    = rnd<secret, r>
-    ; data    = 0<secret, -1>
-    }
-  in
-  ⌊ -1 , ⌊ r , term ⌋ ⌋
+let default_user_data =
+  0<secret, `r0>
+in
+
+let default_ostack_data (x : unit<public, _|_>) =
+  { is_some    = false<secret, `r0>
+  ; ostack_tag = rnd<secret, `r0 \/ `r1>
+  ; ostack_val = default_user_data
+  }
+in
+
+let default_nr_data (x : unit<public, _|_>) =
+  { is_some = false<secret, `r0>
+  ; nr_tag  = 0<secret, `r0>
+  ; nr_val  = default_ostack_data ()<public, _|_>
+  }
+in
+
+let default_block (x : unit<public, _|_>) =
+  { is_some = false<secret, `r0>
+  ; idx     = 0<secret, `r0>
+  ; data    = default_nr_data ()<public, _|_>
+  }
+in
 
 (******************
  ** Trivial ORAM **
  ******************)
 
-let trivial_init (size : int<public>) : trivial_oram =
-  array(size)[fun (_ : int<public>) . default_block[?] ()]
+let trivial_init (size : int<public, _|_>) =
+  array(size)[fun (_ : int<public, _|_>) . default_block]
 in
 
-let trivial_rr' (Π r_max : int) (toram : trivial_oram r_max) (idx : int(r_max)<secret>) =
+let trivial_rr' (toram : trivial_oram) (idx : int<secret, _|_>) =
   let len = length(toram) in
-  let rec iterate (i : int<public>) (acc : block) : block =
+  let rec iterate (i : int<public, _|_>) (acc : block) : block =
     if i = len then
       acc
     else
-      let curr = toram[i] <- default_block[?] () in
-      let ⌊ r_curr , ⌊ r'_curr , curr ⌋ ⌋ = curr in   (* Unpacking a dependent pair, we may use the indices r_curr, r'_curr and know r_curr < r'_curr *)
-      let ⌊ r_acc , ⌊ r'_acc , acc ⌋ ⌋ = acc in       (* ... same thing, r_acc < r'_acc *)
-      let swap = not acc.is_some && idx = curr.idx in (* OK since r_curr \/ r_acc (region of `swap`) is < r'_curr and r_curr \/ r_acc < r'_acc ... uh oh *)
+      let curr = toram[i] <- default_block ()<public, _|_> in
+      let swap = not acc.is_some && idx = curr.idx in
       let (l, r) = mux(swap, curr, acc) in
       let _ = toram[i] <- r in
       iterate (i + 1<public, _|_>) l
@@ -259,41 +311,32 @@ in
 
 let ostack_init (size : int<public, _|_>) (bucket_size : int<public, _|_>) =
   { oram  = nr_init size bucket_size
-  ; idx_r = array(1<public, _|_>)[fun (_ : int<public, _|_>) . 0<secret, _|_>]
-  ; tag_r = array(1<public, _|_>)[fun (_ : int<public, _|_>) . rnd<secret, `r0>]
+  ; idx_r = array(1<public, _|_>)[fun (_ : int<public, _|_>) . 0<secret, `r0>]
+  ; tag_r = array(1<public, _|_>)[fun (_ : int<public, _|_>) . rnd<secret, `r0 \/ `r1>]
   }
 in
 
-let stackop (ostack : ostack) (ispush : bool<secret, _|_>) (data : user_data) =
+let stackop (ostack : ostack) (data : user_data) =
   let nroram = ostack.oram in
   let idx = ostack.idx_r[0<public, _|_>] in
   let tag = ostack.tag_r[0<public, _|_>] <- rnd<secret, `r0> in
 
-  let (rr_idx, _) = mux(ispush, -1<secret, _|_>, idx) in
-  let (rr_tag, add_tag) = mux(ispush, rnd<secret, `r0>, tag) in
-  let res = nr_rr nroram rr_idx reveal(rr_tag) in
+  let add_tag = tag in
+  let idx' = idx + 1<secret, _|_> in
+  let tag' = rnd<secret, `r0 \/ `r1> in
 
-  let (idx', _) = mux(ispush, idx + 1<secret, _|_>, idx - 1<secret, _|_>) in
-  let fresh = rnd<secret, `r0> in
-  let (tag', _) = mux(ispush, trust(fresh), res.ostack_tag) in
-  let tag' = prove(tag') in
-
-  let cand = { is_some = true<secret, _|_>
-             ; idx     = idx'
-             ; data    = { is_some = true<secret, _|_>
-                         ; nr_tag  = use(tag')
-                         ; nr_val  = { is_some    = true<secret, _|_>
-                                     ; ostack_tag = trust(add_tag)
+  let cand = { is_some = true<secret, `r0>
+             ; idx     = idx
+             ; data    = { is_some = true<secret, `r0>
+                         ; nr_tag  = use(tag)
+                         ; nr_val  = { is_some    = true<secret, `r0>
+                                     ; ostack_tag = tag'
                                      ; ostack_val = data
                                      }
                          }
              } in
 
-  let default = default_block ()<public, _|_> in
-
-  let (add, _) = mux(ispush, cand, default) in
-
-  let _ = nr_add' nroram add in
+  let _ = nr_add' nroram cand in
 
   let _ = ostack.idx_r[0<public, _|_>] <- idx' in
   let _ = ostack.tag_r[0<public, _|_>] <- tag' in

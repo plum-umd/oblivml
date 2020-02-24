@@ -26,12 +26,14 @@ module Pattern = Pattern
 
 (** Expressions *)
 module Position = Position
-module Section = Section
-module Expr    = Expr
+module Section  = Section
+module Source   = Source
 
 (** Static Semantics *)
-module Static = Static
+(* module Static = Static *)
 
 (** Evaluation Semantics *)
+module Value = Value
+module Runtime = Runtime
+module Cont = Cont
 module Sampling = Sampling
-module Eval = Eval

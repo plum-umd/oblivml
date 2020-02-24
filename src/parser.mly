@@ -4,24 +4,22 @@
 
   open Parsing
 
-  open Expr
+  open Source
 
   exception SyntaxError of Position.t * String.t
 
   (** Annotate an AST node with positions in source. *)
   let annotate e =
-    { loc  = Some ({ l_pos = symbol_start_pos ()
-                   ; r_pos = symbol_end_pos ()
-                   })
-    ; node = e
+    { source_location  = { l_pos = symbol_start_pos () ; r_pos = symbol_end_pos () }
+    ; datum = e
     }
 
   let curry patterns body =
     List.fold_right patterns
                     ~init:body
                     ~f:(fun pat acc ->
-                            annotate (EAbs { param = pat
-                                           ; body  = acc
+                            annotate (EAbs { pat  = pat
+                                           ; body = acc
                                            }))
 
   let curry_rec name patterns body t_ret =
@@ -33,8 +31,8 @@
           ps
           ~init:(body, t_ret)
           ~f:(fun pat (body_acc, t_acc) ->
-              let body_rec' = annotate (EAbs { param = pat
-                                             ; body  = body_acc
+              let body_rec' = annotate (EAbs { pat  = pat
+                                             ; body = body_acc
                                              })
               in
               match pat with
@@ -44,7 +42,7 @@
               | _ -> raise (SyntaxError (symbol_start_pos (), "Recursive functions must have type annotated parameters.")))
       in
       annotate (ERec { name  = name
-                     ; param = p
+                     ; pat   = p
                      ; body  = body_rec
                      ; t_ret = t_rec
                      })
@@ -182,7 +180,7 @@
  *********************************/
 
 %start start
-%type <Expr.t> start
+%type <Source.t> start
 
 %left TLARROW TRARROW TIN TREGJOIN TELSE
 %left TBAND
@@ -204,54 +202,46 @@ start :
 
 expr :
   /** Unary Boolean Operation */
-  | TNOT expr { annotate (EBUnOp { op  = Boolean.Un.Op.Not
-                                 ; arg = $2
-                                 }) }
+  | TNOT expr { annotate (EBOp { op   = Boolean.Op.Not
+                               ; args = [ $2 ]
+                               }) }
   /** Binary Boolean Operation */
-  | expr TBAND expr { annotate (EBBinOp { op  = Boolean.Bin.Op.And
-                                        ; lhs = $1
-                                        ; rhs = $3
-                                        }) }
+  | expr TBAND expr { annotate (EBOp { op   = Boolean.Op.And
+                                     ; args = [ $1 ; $3 ]
+                                     }) }
   /** Binary Arithmetic Operation */
-  | expr TPLUS expr { annotate (EABinOp { op  = Arith.Bin.Op.Add
-                                        ; lhs = $1
-                                        ; rhs = $3
-                                        }) }
-  | expr TMINUS expr { annotate (EABinOp { op  = Arith.Bin.Op.Subtract
-                                         ; lhs = $1
-                                         ; rhs = $3
-                                         }) }
-  | expr TSTAR expr { annotate (EABinOp { op  = Arith.Bin.Op.Mult
-                                        ; lhs = $1
-                                        ; rhs = $3
-                                        }) }
-  | expr TDIV expr { annotate (EABinOp { op  = Arith.Bin.Op.Div
-                                       ; lhs = $1
-                                       ; rhs = $3
-                                       }) }
-  | expr TMOD expr { annotate (EABinOp { op  = Arith.Bin.Op.Mod
-                                       ; lhs = $1
-                                       ; rhs = $3
-                                       }) }
-  | expr TLAND expr { annotate (EABinOp { op  = Arith.Bin.Op.And
-                                        ; lhs = $1
-                                        ; rhs = $3
-                                        }) }
+  | expr TPLUS expr { annotate (EAOp { op   = Arith.Op.Add
+                                     ; args = [ $1 ; $3 ]
+                                     }) }
+  | expr TMINUS expr { annotate (EAOp { op   = Arith.Op.Subtract
+                                      ; args = [ $1 ; $3 ]
+                                      }) }
+  | expr TSTAR expr { annotate (EAOp { op   = Arith.Op.Mult
+                                     ; args = [ $1 ; $3 ]
+                                     }) }
+  | expr TDIV expr { annotate (EAOp { op   = Arith.Op.Div
+                                    ; args = [ $1 ; $3 ]
+                                    }) }
+  | expr TMOD expr { annotate (EAOp { op   = Arith.Op.Mod
+                                    ; args = [ $1 ; $3 ]
+                                    }) }
+  | expr TLAND expr { annotate (EAOp { op   = Arith.Op.And
+                                     ; args = [ $1 ; $3 ]
+                                     }) }
   /** Binary Arithmetic Relation */
-  | expr TEQ expr { annotate (EABinRel { rel = Arith.Bin.Rel.Equal
-                                       ; lhs = $1
-                                       ; rhs = $3
-                                       }) }
+  | expr TEQ expr { annotate (EARel { rel = Arith.Rel.Equal
+                                    ; args = [ $1 ; $3 ]
+                                    }) }
   /** Tuple */
   | TLPAR expr TCOMMA expr TRPAR { annotate (ETuple ($2, $4)) }
   /** Array */
   | TARRAY TLPAR expr TRPAR TSLPAR expr TSRPAR { annotate (EArrInit { size = $3
                                                                     ; init = $6
                                                                     }) }
-  | expr TSLPAR expr TSRPAR { annotate (EArrRead { addr = $1
-                                                 ; idx  = $3
+  | expr TSLPAR expr TSRPAR { annotate (EArrRead { loc = $1
+                                                 ; idx = $3
                                                  }) }
-  | expr TSLPAR expr TSRPAR TLARROW expr { annotate (EArrWrite { addr  = $1
+  | expr TSLPAR expr TSRPAR TLARROW expr { annotate (EArrWrite { loc   = $1
                                                                ; idx   = $3
                                                                ; value = $6
                                                                }) }
@@ -305,31 +295,30 @@ fexpr :
 
 atexpr :
   /** Literal */
-  | TLIT TALPAR TLABEL TCOMMA region TARPAR { annotate (ELit { value  = $1
-                                                             ; label  = $3
-                                                             ; region = $5
-                                                             }) }
+  | TLIT TALPAR TLABEL TARPAR { annotate (ELit { datum  = $1
+                                               ; label  = $3
+                                               }) }
   /** Flip */
-  | TFLIP TALPAR TLABEL TCOMMA region TARPAR { annotate (EFlip { label  = $3
-                                                               ; region = $5
-                                                               }) }
+  | TFLIP TALPAR region TARPAR { annotate (EFlip $3) }
+
   /** Rnd */
-  | TRND TALPAR TLABEL TCOMMA region TARPAR { annotate (ERnd { label  = $3
-                                                             ; region = $5
-                                                             }) }
+  | TRND TALPAR region TARPAR { annotate (ERnd $3) }
+
   /** Var */
-  | TVAR path { annotate (EVar { path = $1 :: $2 }) }
+  | TVAR path { annotate (EVar ($1 :: $2)) }
 
   /** Record */
   | TCLPAR record_defs TCRPAR { annotate (ERecord $2) }
   /** Use */
-  | TUSE TLPAR TVAR TRPAR { annotate (EUse $3) }
+  | TUSE TLPAR TVAR TRPAR { annotate (ECast { var   = $3
+                                            ; label = Label.secret
+                                            }) }
+
   /** Reveal */
-  | TREVEAL TLPAR TVAR TRPAR { annotate (EReveal $3) }
-  /** Trust */
-  | TTRUST TLPAR TVAR TRPAR { annotate (ETrust $3) }
-  /** Prove */
-  | TPROVE TLPAR TVAR TRPAR { annotate (EProve $3) }
+  | TREVEAL TLPAR TVAR TRPAR { annotate (ECast { var = $3
+                                               ; label = Label.secret
+                                               }) }
+
   /** Grouping */
   | TLPAR expr TRPAR { $2 }
 ;
