@@ -1,7 +1,7 @@
 open Core
 open Stdio
 
-exception TypeError of Section.t Option.t * String.t
+exception TypeError of Section.t * String.t
 
 type env_t = (Var.t, Type.t Option.t, Var.comparator_witness) Map.t
 
@@ -173,162 +173,100 @@ let rec mux_merge loc l_guard r_guard t1 t2 =
 
 type alias_t = (Var.t, Type.t, Var.comparator_witness) Map.t
 
-let rec static (tenv : env_t) (talias : alias_t) (e : Expr.t) : Type.t * env_t =
-  match e.node with
-  | Expr.ELit l ->
-    let t_lit = Type.TBase (Literal.to_type l.value, l.label, l.region) in
+let rec static (tenv : env_t) (talias : alias_t) (e : Source.t) : Type.t * env_t =
+  match e.datum with
+  | Source.ELit l ->
+    let t_lit = Type.TBase (Literal.to_type l.datum, l.label, Region.bottom) in
     (t_lit, tenv)
 
-  | Expr.EFlip f ->
-    if Region.equiv f.region Region.bottom then
+  | Source.EFlip r ->
+    if Region.equiv r Region.bottom then
       let msg = "Region annotation cannot be bottom." in
-      raise (TypeError (e.loc, msg))
+      raise (TypeError (e.source_location, msg))
     else
-      let t_flip = Type.TBase (Type.Base.TBRBool, f.label, f.region) in
+      let t_flip = Type.TBase (Type.Base.TBRBool, Label.secret, r) in
       (t_flip, tenv)
 
-  | Expr.ERnd r ->
-    if Region.equiv r.region Region.bottom then
+  | Source.ERnd r ->
+    if Region.equiv r Region.bottom then
       let msg = "Region annotation cannot be bottom." in
-      raise (TypeError (e.loc, msg))
+      raise (TypeError (e.source_location, msg))
     else
-      let t_rnd = Type.TBase (Type.Base.TBRInt, r.label, r.region) in
+      let t_rnd = Type.TBase (Type.Base.TBRInt, Label.secret, r) in
       (t_rnd, tenv)
 
-  | Expr.EVar var ->
-    (match env_consume var.path tenv with
+  | Source.EVar path ->
+    (match env_consume path tenv with
      | Result.Ok r      -> r
-     | Result.Error err -> raise (TypeError (e.loc, Error.to_string_hum err)))
+     | Result.Error err -> raise (TypeError (e.source_location, Error.to_string_hum err)))
 
-  | Expr.EBUnOp buo ->
-    let ret = static tenv talias buo.arg in
-    let (t_arg, tenv') = ret in
-    (match t_arg with
-     | Type.TBase (Type.Base.TBBool, _, _) -> ret
-     | _ ->
-       let msg =
-         Printf.sprintf
-           "Expected type `bool`, but got %s."
-           (Type.to_string t_arg)
-       in
-       raise (TypeError (e.loc, msg)))
+  | Source.EBOp bo ->
+    let ((l', r'), tenv') =
+      List.fold
+        ~init:((Label.public, Region.bottom), tenv)
+        ~f:(fun ((l_acc, r_acc), env_acc) arg ->
+            let (t', tenv') = static env_acc talias arg in
+            match t' with
+            | Type.TBase (Type.Base.TBBool, l, r) -> ((Label.join l_acc l, Region.join r_acc r), tenv')
+            | _ ->
+              let msg =
+                Printf.sprintf
+                  "Expected type `bool`, but got %s."
+                  (Type.to_string t')
+              in
+              raise (TypeError (e.source_location, msg)))
+        bo.args
+    in
+    (Type.TBase (Type.Base.TBBool, l', r'), tenv')
 
-  | Expr.EBBinOp bbo ->
-    let (t_lhs, tenv') = static tenv talias bbo.lhs in
-    (match t_lhs with
-     | Type.TBase (Type.Base.TBBool, l_lhs, r_lhs) ->
-       let (t_rhs, tenv'') = static tenv' talias bbo.rhs in
-       (match t_rhs with
-        | Type.TBase (Type.Base.TBBool, l_rhs, r_rhs) ->
-          let l'       = Label.join l_lhs l_rhs in
-          let r'       = Region.join r_lhs r_rhs in
-          let t_bbinop = Type.TBase (Type.Base.TBBool, l', r') in
-          (t_bbinop, tenv'')
-        | _ ->
-          let msg =
-            Printf.sprintf
-              "Expected type `bool`, but got %s."
-              (Type.to_string t_rhs)
-          in
-          raise (TypeError (bbo.rhs.loc, msg)))
-     | _ ->
-       let msg =
-         Printf.sprintf
-           "Expected type `bool`, but got %s."
-           (Type.to_string t_lhs)
-       in
-       raise (TypeError (bbo.lhs.loc, msg)))
+  | Source.EAOp ao ->
+    let ((l', r'), tenv') =
+      List.fold
+        ~init:((Label.public, Region.bottom), tenv)
+        ~f:(fun ((l_acc, r_acc), env_acc) arg ->
+            let (t', tenv') = static env_acc talias arg in
+            match t' with
+            | Type.TBase (Type.Base.TBInt, l, r) -> ((Label.join l_acc l, Region.join r_acc r), tenv')
+            | _ ->
+              let msg =
+                Printf.sprintf
+                  "Expected type `bool`, but got %s."
+                  (Type.to_string t')
+              in
+              raise (TypeError (e.source_location, msg)))
+        ao.args
+    in
+    (Type.TBase (Type.Base.TBInt, l', r'), tenv')
 
-  | Expr.EAUnOp auo ->
-    let ret = static tenv talias auo.arg in
-    let (t_arg, tenv') = ret in
-    (match t_arg with
-     | Type.TBase (Type.Base.TBInt, _, _) -> ret
-     | _ ->
-       let msg =
-         Printf.sprintf
-           "Expected type `int`, but got %s."
-           (Type.to_string t_arg)
-       in
-       raise (TypeError (e.loc, msg)))
+  | Source.EARel ar ->
+    let ((l', r'), tenv') =
+      List.fold
+        ~init:((Label.public, Region.bottom), tenv)
+        ~f:(fun ((l_acc, r_acc), env_acc) arg ->
+            let (t', tenv') = static env_acc talias arg in
+            match t' with
+            | Type.TBase (Type.Base.TBInt, l, r) -> ((Label.join l_acc l, Region.join r_acc r), tenv')
+            | _ ->
+              let msg =
+                Printf.sprintf
+                  "Expected type `bool`, but got %s."
+                  (Type.to_string t')
+              in
+              raise (TypeError (e.source_location, msg)))
+        ar.args
+    in
+    (Type.TBase (Type.Base.TBBool, l', r'), tenv')
 
-  | Expr.EABinOp abo ->
-    let (t_lhs, tenv') = static tenv talias abo.lhs in
-    (match t_lhs with
-     | Type.TBase (Type.Base.TBInt, l_lhs, r_lhs) ->
-       let (t_rhs, tenv'') = static tenv' talias abo.rhs in
-       (match t_rhs with
-        | Type.TBase (Type.Base.TBInt, l_rhs, r_rhs) ->
-          let l'       = Label.join l_lhs l_rhs in
-          let r'       = Region.join r_lhs r_rhs in
-          let t_abinop = Type.TBase (Type.Base.TBInt, l', r') in
-          (t_abinop, tenv'')
-        | _ ->
-          let msg =
-            Printf.sprintf
-              "Expected type `int`, but got %s."
-              (Type.to_string t_rhs)
-          in
-          raise (TypeError (abo.rhs.loc, msg)))
-     | _ ->
-       let msg =
-         Printf.sprintf
-           "Expected type `int`, but got %s."
-           (Type.to_string t_lhs)
-       in
-       raise (TypeError (abo.lhs.loc, msg)))
-
-  | Expr.EAUnRel aur ->
-    let (t_arg, tenv') = static tenv talias aur.arg in
-    (match t_arg with
-     | Type.TBase (Type.Base.TBInt, l_arg, r_arg) ->
-       let t_aunrel = Type.TBase (Type.Base.TBBool, l_arg, r_arg) in
-       (t_aunrel, tenv')
-     | _ ->
-       let msg =
-         Printf.sprintf
-           "Expected type `int`, but got %s."
-           (Type.to_string t_arg)
-       in
-       raise (TypeError (e.loc, msg)))
-
-  | Expr.EABinRel abr ->
-    let (t_lhs, tenv') = static tenv talias abr.lhs in
-    (match t_lhs with
-     | Type.TBase (Type.Base.TBInt, l_lhs, r_lhs) ->
-       let (t_rhs, tenv'') = static tenv' talias abr.rhs in
-       (match t_rhs with
-        | Type.TBase (Type.Base.TBInt, l_rhs, r_rhs) ->
-          let l'        = Label.join l_lhs l_rhs in
-          let r'        = Region.join r_lhs r_rhs in
-          let t_abinrel = Type.TBase (Type.Base.TBBool, l', r') in
-          (t_abinrel, tenv'')
-        | _ ->
-          let msg =
-            Printf.sprintf
-              "Expected type `int`, but got %s."
-              (Type.to_string t_rhs)
-          in
-          raise (TypeError (abr.rhs.loc, msg)))
-     | _ ->
-       let msg =
-         Printf.sprintf
-           "Expected type `int`, but got %s."
-           (Type.to_string t_lhs)
-       in
-       raise (TypeError (abr.lhs.loc, msg)))
-
-  | Expr.ETuple tup ->
-    let (left, right)     = tup.contents in
+  | Source.ETuple (left, right) ->
     let (t_left, tenv')   = static tenv talias left in
     let (t_right, tenv'') = static tenv' talias right in
     let t_tuple           = Type.TTuple (t_left, t_right) in
     (t_tuple, tenv'')
 
-  | Expr.ERecord bindings ->
+  | Source.ERecord bindings ->
     let (t_bindings, tenv') =
       List.fold_left
-        bindings.contents
+        bindings
         ~init:(Map.empty (module Var), tenv)
         ~f:(fun (t_bindings_acc, env_acc) (field, binding) ->
             let (t, tenv_curr) = static env_acc talias binding in
@@ -336,7 +274,7 @@ let rec static (tenv : env_t) (talias : alias_t) (e : Expr.t) : Type.t * env_t =
     in
     (Type.TRecord t_bindings, tenv')
 
-  | Expr.EArrInit arr ->
+  | Source.EArrInit arr ->
     let (t_size, tenv') = static tenv talias arr.size in
     (match t_size with
      | Type.TBase (Type.Base.TBInt, l_size, r_size) ->
@@ -354,45 +292,45 @@ let rec static (tenv : env_t) (talias : alias_t) (e : Expr.t) : Type.t * env_t =
                       "The parameter of the initializer must have bottom region. It's region is %s."
                       (Region.to_string r_body)
                   in
-                  raise (TypeError (arr.init.loc, msg))
+                  raise (TypeError (arr.init.source_location, msg))
               else
                 let msg =
                   Printf.sprintf
                     "The parameter of the initializer must have public label. It's label is %s."
                     (Label.to_string l_body)
                 in
-                raise (TypeError (arr.init.loc, msg))
+                raise (TypeError (arr.init.source_location, msg))
             | _ ->
               let msg =
                 Printf.sprintf
                   "The parameter of the initializer must be an int. It's type is %s."
                   (Type.to_string t_body)
               in
-              raise (TypeError (arr.init.loc, msg)))
+              raise (TypeError (arr.init.source_location, msg)))
          else
            let msg =
              Printf.sprintf
                "The size argument to this array initialization must have bottom region. It's region is %s."
                (Region.to_string r_size)
            in
-           raise (TypeError (arr.size.loc, msg))
+           raise (TypeError (arr.size.source_location, msg))
        else
          let msg =
            Printf.sprintf
              "The size argument to this array initialization must have public label. It's label is %s."
              (Label.to_string l_size)
          in
-         raise (TypeError (arr.size.loc, msg))
+         raise (TypeError (arr.size.source_location, msg))
      | _ ->
        let msg =
          Printf.sprintf
            "The size argument to this array initialization must be an int. It's type is %s."
            (Type.to_string t_size)
        in
-       raise (TypeError (arr.size.loc, msg)))
+       raise (TypeError (arr.size.source_location, msg)))
 
-  | Expr.EArrRead read ->
-    let (t_addr, tenv') = static tenv talias read.addr in
+  | Source.EArrRead read ->
+    let (t_addr, tenv') = static tenv talias read.loc in
     (match t_addr with
      | Type.TArray t_ele ->
        let (t_idx, tenv'') = static tenv' talias read.idx in
@@ -409,38 +347,38 @@ let rec static (tenv : env_t) (talias : alias_t) (e : Expr.t) : Type.t * env_t =
                      "Attempting to read from %s (affine) array without a write."
                      (Type.to_string t_ele)
                  in
-                 raise (TypeError (e.loc, msg)))
+                 raise (TypeError (e.source_location, msg)))
             else
               let msg =
                 Printf.sprintf
                   "The index to this array read must have bottom region. It's region is %s."
                   (Region.to_string r_idx)
               in
-              raise (TypeError (read.idx.loc, msg))
+              raise (TypeError (read.idx.source_location, msg))
           else
             let msg =
               Printf.sprintf
                 "The index to this array read must have public label. It's label is %s."
                 (Label.to_string l_idx)
             in
-            raise (TypeError (read.idx.loc, msg))
+            raise (TypeError (read.idx.source_location, msg))
         | _ ->
           let msg =
             Printf.sprintf
               "The index to this array read must be an int. It's type is %s."
               (Type.to_string t_idx)
           in
-          raise (TypeError (read.idx.loc, msg)))
+          raise (TypeError (read.idx.source_location, msg)))
      | _ ->
        let msg =
          Printf.sprintf
            "This isn't an array. It's type is %s."
            (Type.to_string t_addr)
        in
-       raise (TypeError (read.addr.loc, msg)))
+       raise (TypeError (read.loc.source_location, msg)))
 
-  | Expr.EArrWrite write ->
-    let (t_addr, tenv') = static tenv talias write.addr in
+  | Source.EArrWrite write ->
+    let (t_addr, tenv') = static tenv talias write.loc in
     (match t_addr with
      | Type.TArray t_ele ->
        let (t_idx, tenv'') = static tenv' talias write.idx in
@@ -458,38 +396,38 @@ let rec static (tenv : env_t) (talias : alias_t) (e : Expr.t) : Type.t * env_t =
                     (Type.to_string t_value)
                     (Type.to_string t_ele)
                 in
-                raise (TypeError (write.value.loc, msg))
+                raise (TypeError (write.value.source_location, msg))
             else
               let msg =
                 Printf.sprintf
                   "The index to this array write must have bottom region. It's region is %s."
                   (Region.to_string r_idx)
               in
-              raise (TypeError (write.idx.loc, msg))
+              raise (TypeError (write.idx.source_location, msg))
           else
             let msg =
               Printf.sprintf
                 "The index to this array write must have public label. It's label is %s."
                 (Label.to_string l_idx)
             in
-            raise (TypeError (write.idx.loc, msg))
+            raise (TypeError (write.idx.source_location, msg))
         | _ ->
           let msg =
             Printf.sprintf
               "The index to this array write must be an int. It's type is %s."
               (Type.to_string t_idx)
           in
-          raise (TypeError (write.idx.loc, msg)))
+          raise (TypeError (write.idx.source_location, msg)))
      | _ ->
        let msg =
          Printf.sprintf
            "This isn't an array. It's type is %s."
            (Type.to_string t_addr)
        in
-       raise (TypeError (write.addr.loc, msg)))
+       raise (TypeError (write.loc.source_location, msg)))
 
-  | Expr.EArrLen len ->
-    let (t_addr, tenv') = static tenv talias len.addr in
+  | Source.EArrLen len ->
+    let (t_addr, tenv') = static tenv talias len in
     (match t_addr with
      | Type.TArray _ ->
        let l'       = Label.bottom in
@@ -502,19 +440,19 @@ let rec static (tenv : env_t) (talias : alias_t) (e : Expr.t) : Type.t * env_t =
            "This isn't an array. It's type is %s."
            (Type.to_string t_addr)
        in
-       raise (TypeError (len.addr.loc, msg)))
+       raise (TypeError (len.source_location, msg)))
 
-  | Expr.EUse use ->
+  | Source.ECast use when Label.equiv use.label Label.secret ->
     (try
-       let x_t = Map.find_exn tenv use.arg in
+       let x_t = Map.find_exn tenv use.var in
        match x_t with
        | None ->
          let msg =
            Printf.sprintf
              "Attempted to reference the variable %s, which has been consumed."
-             (Var.to_string use.arg)
+             (Var.to_string use.var)
          in
-         raise (TypeError (e.loc, msg))
+         raise (TypeError (e.source_location, msg))
        | Some t ->
          (match t with
           | Type.TBase (t_base, l, r) ->
@@ -528,7 +466,7 @@ let rec static (tenv : env_t) (talias : alias_t) (e : Expr.t) : Type.t * env_t =
                      "Attempted to secret-coerce (use) variable with non-random type. It's type is %s."
                      (Type.to_string t)
                  in
-                 raise (TypeError (e.loc, msg)))
+                 raise (TypeError (e.source_location, msg)))
             in
             let t_use = Type.TBase (t_base', Label.top, r) in
             (t_use, tenv)
@@ -536,30 +474,30 @@ let rec static (tenv : env_t) (talias : alias_t) (e : Expr.t) : Type.t * env_t =
             let msg =
               Printf.sprintf
                 "The variable %s must be type rbool or rint, but is %s."
-                (Var.to_string use.arg)
+                (Var.to_string use.var)
                 (Type.to_string t)
             in
-            raise (TypeError (e.loc, msg)))
+            raise (TypeError (e.source_location, msg)))
      with
      | Not_found ->
        let msg =
          Printf.sprintf
            "The variable %s is undefined."
-           (Var.to_string use.arg)
+           (Var.to_string use.var)
        in
-       raise (TypeError (e.loc, msg)))
+       raise (TypeError (e.source_location, msg)))
 
-  | Expr.EReveal rev ->
+  | Source.ECast rev when Label.equiv rev.label Label.public ->
     (try
-       let x_t = Map.find_exn tenv rev.arg in
+       let x_t = Map.find_exn tenv rev.var in
        match x_t with
        | None ->
          let msg =
            Printf.sprintf
              "Attempted to reference the variable %s, which has been consumed."
-             (Var.to_string rev.arg)
+             (Var.to_string rev.var)
          in
-         raise (TypeError (e.loc, msg))
+         raise (TypeError (e.source_location, msg))
        | Some t ->
          (match t with
           | Type.TBase (t_base, l, r) ->
@@ -573,7 +511,7 @@ let rec static (tenv : env_t) (talias : alias_t) (e : Expr.t) : Type.t * env_t =
                      "Attempted to public-coerce (reveal) variable with non-random type. It's type is %s."
                      (Type.to_string t)
                  in
-                 raise (TypeError (e.loc, msg)))
+                 raise (TypeError (e.source_location, msg)))
             in
             let t_reveal = Type.TBase (t_base', Label.bottom, Region.bottom) in
             (t_reveal, tenv)
@@ -581,116 +519,26 @@ let rec static (tenv : env_t) (talias : alias_t) (e : Expr.t) : Type.t * env_t =
             let msg =
               Printf.sprintf
                 "The variable %s must be type rbool or rint, but is %s."
-                (Var.to_string rev.arg)
+                (Var.to_string rev.var)
                 (Type.to_string t)
             in
-            raise (TypeError (e.loc, msg)))
+            raise (TypeError (e.source_location, msg)))
      with
      | Not_found ->
        let msg =
          Printf.sprintf
            "The variable %s is undefined."
-           (Var.to_string rev.arg)
+           (Var.to_string rev.var)
        in
-       raise (TypeError (e.loc, msg)))
+       raise (TypeError (e.source_location, msg)))
 
-  | Expr.ETrust trust ->
-    (try
-       let x_t = Map.find_exn tenv trust.arg in
-       match x_t with
-       | None ->
-         let msg =
-           Printf.sprintf
-             "Attempted to reference the variable %s, which has been consumed."
-             (Var.to_string trust.arg)
-         in
-         raise (TypeError (e.loc, msg))
-       | Some t ->
-         (match t with
-          | Type.TBase (t_base, l, r) ->
-            let t_base' =
-              (match t_base with
-               | Type.Base.TBRBool -> Type.Base.TBNUBool
-               | Type.Base.TBRInt  -> Type.Base.TBNUInt
-               | _ ->
-                 let msg =
-                   Printf.sprintf
-                     "Attemptd to non-uniform coerce (trust) variable with non-random type. It's type is %s."
-                     (Type.to_string t)
-                 in
-                 raise (TypeError (e.loc, msg)))
-            in
-            let t_trust = Type.TBase (t_base', l, r) in
-            (t_trust, tenv)
-          | _ ->
-            let msg =
-              Printf.sprintf
-                "The variable %s must be type rbool or rint, but is %s."
-                (Var.to_string trust.arg)
-                (Type.to_string t)
-            in
-            raise (TypeError (e.loc, msg)))
-     with
-     | Not_found ->
-       let msg =
-         Printf.sprintf
-           "The variable %s is undefined."
-           (Var.to_string trust.arg)
-       in
-       raise (TypeError (e.loc, msg)))
-
-  | Expr.EProve prove ->
-    (try
-       let x_t = Map.find_exn tenv prove.arg in
-       match x_t with
-       | None ->
-         let msg =
-           Printf.sprintf
-             "Attempted to reference the variable %s, which has been consumed."
-             (Var.to_string prove.arg)
-         in
-         raise (TypeError (e.loc, msg))
-       | Some t ->
-         (match t with
-          | Type.TBase (t_base, l, r) ->
-            let t_base' =
-              (match t_base with
-               | Type.Base.TBNUBool -> Type.Base.TBRBool
-               | Type.Base.TBNUInt  -> Type.Base.TBRInt
-               | _ ->
-                 let msg =
-                   Printf.sprintf
-                     "Attemptd to random coerce (prove) variable with non-NU type. It's type is %s."
-                     (Type.to_string t)
-                 in
-                 raise (TypeError (e.loc, msg)))
-            in
-            let t_prove = Type.TBase (t_base', l, r) in
-            (t_prove, tenv)
-          | _ ->
-            let msg =
-              Printf.sprintf
-                "The variable %s must be type nubool or nuint, but is %s."
-                (Var.to_string prove.arg)
-                (Type.to_string t)
-            in
-            raise (TypeError (e.loc, msg)))
-     with
-     | Not_found ->
-       let msg =
-         Printf.sprintf
-           "The variable %s is undefined."
-           (Var.to_string prove.arg)
-       in
-       raise (TypeError (e.loc, msg)))
-
-  | Expr.EMux mux ->
+  | Source.EMux mux ->
     let (t_guard, tenv') = static tenv talias mux.guard in
     (match t_guard with
      | Type.TBase (Type.Base.TBBool, l_guard, r_guard) ->
        let (t_lhs, tenv'') = static tenv' talias mux.lhs in
        let (t_rhs, tenv''') = static tenv'' talias mux.rhs in
-       let t_ret = mux_merge e.loc l_guard r_guard t_lhs t_rhs in
+       let t_ret = mux_merge e.source_location l_guard r_guard t_lhs t_rhs in
        (Type.TTuple (t_ret, t_ret), tenv''')
      | _ ->
        let msg =
@@ -698,10 +546,10 @@ let rec static (tenv : env_t) (talias : alias_t) (e : Expr.t) : Type.t * env_t =
            "The guard of this mux isn't a `bool` type, it has type %s."
            (Type.to_string t_guard)
        in
-       raise (TypeError (mux.guard.loc, msg)))
+       raise (TypeError (mux.guard.source_location, msg)))
 
-  | Expr.EAbs abs ->
-    let param' = Pattern.resolve_alias abs.param talias in
+  | Source.EAbs abs ->
+    let param' = Pattern.resolve_alias abs.pat talias in
     (match param' with
      | Pattern.XAscr (p, t_param) ->
        let plus =
@@ -714,7 +562,7 @@ let rec static (tenv : env_t) (talias : alias_t) (e : Expr.t) : Type.t * env_t =
                "The pattern of the parameter does not match the ascribed type. The type is %s."
                (Type.to_string t_param)
            in
-           raise (TypeError (e.loc, msg))
+           raise (TypeError (e.source_location, msg))
          | Pattern.BindingError (x, err_msg) ->
            let msg =
              Printf.sprintf
@@ -722,7 +570,7 @@ let rec static (tenv : env_t) (talias : alias_t) (e : Expr.t) : Type.t * env_t =
                (Var.to_string x)
                err_msg
            in
-           raise (TypeError (e.loc, msg))
+           raise (TypeError (e.source_location, msg))
          | Pattern.AscriptionError (t_claim, t_actual) ->
            let msg =
              Printf.sprintf
@@ -730,7 +578,7 @@ let rec static (tenv : env_t) (talias : alias_t) (e : Expr.t) : Type.t * env_t =
                (Type.to_string t_claim)
                (Type.to_string t_actual)
            in
-           raise (TypeError (e.loc, msg))
+           raise (TypeError (e.source_location, msg))
        in
        let tenv_plus            = env_update tenv plus in
        let (t_body, tenv'_plus) = static tenv_plus talias abs.body in
@@ -741,10 +589,10 @@ let rec static (tenv : env_t) (talias : alias_t) (e : Expr.t) : Type.t * env_t =
          Printf.sprintf
            "Function parameters must be annotated with their type."
        in
-       raise (TypeError (e.loc, msg)))
+       raise (TypeError (e.source_location, msg)))
 
-  | Expr.ERec recabs ->
-    let param' = Pattern.resolve_alias recabs.param talias in
+  | Source.ERec recabs ->
+    let param' = Pattern.resolve_alias recabs.pat talias in
     let t_ret' = Type.resolve_alias recabs.t_ret talias in
     (match param' with
      | Pattern.XAscr (p, t_param) ->
@@ -758,7 +606,7 @@ let rec static (tenv : env_t) (talias : alias_t) (e : Expr.t) : Type.t * env_t =
                "The pattern of the parameter does not match the ascribed type. The type is %s."
                (Type.to_string t_param)
            in
-           raise (TypeError (e.loc, msg))
+           raise (TypeError (e.source_location, msg))
          | Pattern.BindingError (x, err_msg) ->
            let msg =
              Printf.sprintf
@@ -766,7 +614,7 @@ let rec static (tenv : env_t) (talias : alias_t) (e : Expr.t) : Type.t * env_t =
                (Var.to_string x)
                err_msg
            in
-           raise (TypeError (e.loc, msg))
+           raise (TypeError (e.source_location, msg))
          | Pattern.AscriptionError (t_claim, t_actual) ->
            let msg =
              Printf.sprintf
@@ -774,7 +622,7 @@ let rec static (tenv : env_t) (talias : alias_t) (e : Expr.t) : Type.t * env_t =
                (Type.to_string t_claim)
                (Type.to_string t_actual)
            in
-           raise (TypeError (e.loc, msg))
+           raise (TypeError (e.source_location, msg))
        in
        let tenv_plus            = env_update tenv plus in
        let (t_body, tenv'_plus) = static tenv_plus talias recabs.body in
@@ -785,9 +633,9 @@ let rec static (tenv : env_t) (talias : alias_t) (e : Expr.t) : Type.t * env_t =
          Printf.sprintf
            "Function parameters must be annotated with their type."
        in
-       raise (TypeError (e.loc, msg)))
+       raise (TypeError (e.source_location, msg)))
 
-  | Expr.EApp app ->
+  | Source.EApp app ->
     let (t_lam, tenv') = static tenv talias app.lam in
     (match t_lam with
      | Type.TFun (t_param, t_body) ->
@@ -801,16 +649,16 @@ let rec static (tenv : env_t) (talias : alias_t) (e : Expr.t) : Type.t * env_t =
              (Type.to_string t_param)
              (Type.to_string t_arg)
          in
-         raise (TypeError (e.loc, msg))
+         raise (TypeError (e.source_location, msg))
      | _ ->
        let msg =
          Printf.sprintf
            "The value in function position does not have function type, it's type is %s."
            (Type.to_string t_lam)
        in
-       raise (TypeError (app.lam.loc, msg)))
+       raise (TypeError (app.lam.source_location, msg)))
 
-  | Expr.ELet binding ->
+  | Source.ELet binding ->
     let pat' = Pattern.resolve_alias binding.pat talias in
     let (t_value, tenv') = static tenv talias binding.value in
     let plus             =
@@ -823,7 +671,7 @@ let rec static (tenv : env_t) (talias : alias_t) (e : Expr.t) : Type.t * env_t =
             "The pattern of this let-binding does not match the type of the bound expression. The type is %s."
             (Type.to_string t_value)
         in
-        raise (TypeError (e.loc, msg))
+        raise (TypeError (e.source_location, msg))
       | Pattern.BindingError (x, err_msg) ->
         let msg =
           Printf.sprintf
@@ -831,7 +679,7 @@ let rec static (tenv : env_t) (talias : alias_t) (e : Expr.t) : Type.t * env_t =
             (Var.to_string x)
             err_msg
         in
-        raise (TypeError (e.loc, msg))
+        raise (TypeError (e.source_location, msg))
       | Pattern.AscriptionError (t_claim, t_actual) ->
         let msg =
           Printf.sprintf
@@ -839,17 +687,17 @@ let rec static (tenv : env_t) (talias : alias_t) (e : Expr.t) : Type.t * env_t =
             (Type.to_string t_claim)
             (Type.to_string t_actual)
         in
-        raise (TypeError (e.loc, msg))
+        raise (TypeError (e.source_location, msg))
     in
     let tenv'_plus            = env_update tenv' plus in
     let (t_body, tenv''_plus) = static tenv'_plus talias binding.body in
     let tenv''                = env_clear tenv''_plus (Map.keys plus) in
     (t_body, tenv'')
 
-  | Expr.EType alias ->
+  | Source.EType alias ->
     static tenv (Map.set talias ~key:alias.name ~data:alias.typ) alias.body
 
-  | Expr.EIf ite ->
+  | Source.EIf ite ->
     let (t_guard, tenv') = static tenv talias ite.guard in
     (match t_guard with
      | Type.TBase (Type.Base.TBBool, l_guard, _) when Label.equiv l_guard Label.public ->
@@ -859,12 +707,16 @@ let rec static (tenv : env_t) (talias : alias_t) (e : Expr.t) : Type.t * env_t =
          (t_thenb, env_join tenv'' tenv''')
        else
          let msg = Printf.sprintf "The branches of an if-statement must be the same type. The types are %s and %s." (Type.to_string t_thenb) (Type.to_string t_elseb) in
-         raise (TypeError (e.loc, msg))
+         raise (TypeError (e.source_location, msg))
      | _ ->
        let msg = Printf.sprintf "The guard of an if-statement must be a public boolean. Got: %s." (Type.to_string t_guard) in
-       raise (TypeError (ite.guard.loc, msg)))
+       raise (TypeError (ite.guard.source_location, msg)))
 
-let rec typecheck (e : Expr.t) : Type.t =
+  | Source.EPrint e -> static tenv talias e
+
+  | Source.ECast _ -> failwith "Impossible"
+
+let rec typecheck (e : Source.t) : Type.t =
   let emp = Map.empty (module Var) in
   let (r, _) = static emp emp e in
   r
