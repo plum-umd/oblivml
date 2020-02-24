@@ -14,6 +14,9 @@
         (modify-syntax-entry ?* ". 23" synTable)
         synTable))
 
+(setq oblivml-letter "[a-z A-Z]")
+(setq oblivml-digit "[0-9]")
+
 (setq oblivml-unit "()")
 (setq oblivml-bool "true\\|false")
 (setq oblivml-int "-?[0-9]+")
@@ -21,8 +24,12 @@
 (setq oblivml-rbottom "_|_")
 (setq oblivml-rvar "`[a-z A-Z][0 - 9]")
 
+;; Figure out why this regexp is broken
+(setq oblivml-var (format "%s(%s\\|%s\\|%s)*" oblivml-letter oblivml-letter oblivml-digit "['_]"))
+
 (setq oblivml-highlights
-      `((,oblivml-unit . font-lock-constant-face)
+      `((,oblivml-var . font-lock-type-face)
+        (,oblivml-unit . font-lock-constant-face)
         (,oblivml-bool . font-lock-constant-face)
         (,oblivml-int . font-lock-constant-face)
         (,oblivml-label . font-lock-type-face)
