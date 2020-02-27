@@ -295,9 +295,13 @@ fexpr :
 
 atexpr :
   /** Literal */
+  | TLIT { annotate (ELit { datum = $1
+                          ; label = Label.public }) }
+
   | TLIT TALPAR TLABEL TARPAR { annotate (ELit { datum  = $1
                                                ; label  = $3
                                                }) }
+
   /** Flip */
   | TFLIP TALPAR region TARPAR { annotate (EFlip $3) }
 
@@ -309,6 +313,7 @@ atexpr :
 
   /** Record */
   | TCLPAR record_defs TCRPAR { annotate (ERecord $2) }
+
   /** Use */
   | TUSE TLPAR TVAR TRPAR { annotate (ECast { var   = $3
                                             ; label = Label.secret
@@ -379,6 +384,9 @@ record_pattern :
 ;
 
 typ :
+  | TBTYP { Type.TBase ($1, Label.public, Region.bottom) }
+  | TBTYP TALPAR region TARPAR { Type.TBase ($1, Label.secret, $3) }
+  | TBTYP TALPAR TLABEL TARPAR { Type.TBase ($1, $3, Region.bottom) }
   | TBTYP TALPAR TLABEL TCOMMA region TARPAR { Type.TBase ($1, $3, $5) }
   | TVAR { Type.TAlias $1 }
   | typ TSTAR typ { Type.TTuple ($1, $3) }

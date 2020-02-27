@@ -1,3 +1,5 @@
+open Core;;
+open Oblivml;;
 #install_printer Oblivml.Label.pp;;
 #install_printer Oblivml.Pattern.pp;;
 #install_printer Oblivml.Position.pp;;
