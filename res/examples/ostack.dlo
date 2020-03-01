@@ -4,127 +4,66 @@
  ** Type Declarations **
  ***********************)
 
-(** Blocks in the trivial ORAM *)
 type block =
-  Π r_max : int .
-  Σ r     : { _ <= r_max } .    (* There are regions called `r`, `r'` in the `int` domain with r < r' such that ... *)
-  Σ r'    : { r < _ } .
-  { is_some : bool<secret, r>
-  ; idx     : int(r)<secret, r> (* `idx` is equal to `r` and ... *)
-  ; tag     : int<secret, r>    (* the `tag` has region `r` and ... *)
-  ; next    : rint<secret, r'>  (* the `next` pointer in the OStack has region `r'` *)
-  ; data    : int<secret, r>
+  Π meta_max : region .
+  Π ptr_min  : { meta_max < _ } .
+  Σ meta     : { _ <= meta_max } . (* Maybe don't even need existentials? Just need "bounds"?
+  Σ ptr      : { ptr_min <= _ } .
+  { is_some  : bool<meta>
+  ; idx      : int<meta>
+  ; tag      : int<meta>
+  ; next     : rint<ptr>
+  ; data     : int<meta>
   }
 
-type trivial_oram = Π r_max : int . (block r_max) array
-in
+type trivial_oram =
+  Π meta_max : region .
+  Π ptr_min  : { meta_max < _ } .
+  (block meta_max ptr_min) array
 
-type nr_oram = Π r_max : int . (trivial_oram r_max) array
-in
+type nr_oram =
+  Π meta_max : region .
+  Π ptr_min  : { meta_max < _ } .
+  (trivial_oram meta_max ptr_min) array
 
 type ostack =
-  Σ r_max : int .               (* There is some region called `r` in the `int` domain such that ... *)
-  { oram  : nr_oram r_max
-  ; idx_r : int(r_max)<secret>  (* `idx_r` is equal to `r` and ... *)
-  ; tag_r : rint<secret, r>     (* `tag_r` has region `r` *)
+  Σ meta_max : region .
+  Σ ptr_min  : { meta_max < _ } .
+  { oram  : nr_oram meta_max ptr_min
+  ; idx_r : int<meta_max>
+  ; tag_r : rint<ptr_min>
   }
 
-(********************
- ** Default Values **
- ********************)
-
-let default_block () : block =
-  Π r : int .
+let default_block (Π meta_max : region) (Π ptr_min  : { meta_max < _ }) () : block meta_max ptr_min =
   let term =
-    { is_some = false<secret, -1>
-    ; idx     = -1<secret>
-    ; tag     = rnd<secret, -1>
-    ; next    = rnd<secret, r>
-    ; data    = 0<secret, -1>
+    { is_some = false<⊥>
+    ; idx     = -1<⊥>
+    ; tag     = -1<⊥>
+    ; next    = rnd<secret, ptr_min>
+    ; data    = 0<secret, ⊥>
     }
   in
-  ⌊ -1 , ⌊ r , term ⌋ ⌋
+  ⌊ ⊥ , ⌊ ptr_min , term ⌋ ⌋ (* OK since ⊥ <= any meta_max chosen, and ⊥ < ptr_min (since ptr_min must be non-bottom from being > meta_max *)
 
-(******************
- ** Trivial ORAM **
- ******************)
-
-let trivial_init (size : int<public>) : trivial_oram =
-  array(size)[fun (_ : int<public>) . default_block[?] ()]
-in
-
-let trivial_rr' (Π r_max : int) (toram : trivial_oram r_max) (idx : int(r_max)<secret>) =
+(* Need to know that when I rr on `trivial_oram meta_max ptr_min` with maximum index, it becomes `trivial_oram (meta_max - 1) (ptr_min - 1)` *)
+(* Is there a name for a dependent collection that tracks its maximum? *)
+let trivial_rr' (Π meta_max : int) (Π ptr_min  : { meta_max < _ }) (troram : trivial_oram meta_max ptr_min) (idx : int<secret>) =
   let len = length(toram) in
-  let rec iterate (i : int<public>) (acc : block) : block =
+  let rec iterate (i : int<public>) (acc : block meta_max ptr_min) : block meta_max ptr_min =
     if i = len then
       acc
     else
-      let curr = toram[i] <- default_block[?] () in
-      let ⌊ r_curr , ⌊ r'_curr , curr ⌋ ⌋ = curr in   (* Unpacking a dependent pair, we may use the indices r_curr, r'_curr and know r_curr < r'_curr *)
-      let ⌊ r_acc , ⌊ r'_acc , acc ⌋ ⌋ = acc in       (* ... same thing, r_acc < r'_acc *)
-      let swap = not acc.is_some && idx = curr.idx in (* OK since r_curr \/ r_acc (region of `swap`) is < r'_curr and r_curr \/ r_acc < r'_acc ... uh oh *)
-      let (l, r) = mux(swap, curr, acc) in
-      let _ = toram[i] <- r in
-      iterate (i + 1<public, _|_>) l
+      let curr = toram[i] <- default_block meta_max ptr_min () in
+      let ⌊ meta_curr , ⌊ ptr_curr , curr ⌋ ⌋ = curr in   (* meta_curr <= meta_max, ptr_min <= ptr_curr *)
+      let ⌊ meta_acc , ⌊ ptr_acc , acc ⌋ ⌋ = acc in       (* meta_acc <= meta_max, ptr_min <= ptr_acc *)
+      let swap = not acc.is_some && idx = curr.idx in     (* Need: meta_curr ⊔ meta_acc < ptr_curr and meta_curr ⊔ meta_acc < ptr_acc *)
+      let (l, r) = mux(swap, curr, acc) in                (* Pf: Since meta_curr <= meta_max and meta_acc <= meta_max we have meta_curr ⊔ meta_acc <= meta_max < ptr_min <= ptr_curr (ptr_acc) *)
+      let _ = toram[i] <- ⌊ meta_curr ⊔ meta_acc , ⌊ ptr_curr ⊔ ptr_acc , r ⌋ ⌋ (* Could assign these in a path-sensitive manner if necessary? Maybe? Won't worry about it for now. *)
+      iterate (i + 1<public, _|_>) ⌊ meta_curr ⊔ meta_acc , ⌊ ptr_curr ⊔ ptr_acc , l ⌋ ⌋
   in
   iterate 0<public, _|_> (default_block ()<public, _|_>)
 in
 
-let trivial_rr (toram : trivial_oram) (idx : int<secret, _|_>) =
-  let result = trivial_rr' toram idx in
-  result.data
-in
-
-let trivial_add' (toram : trivial_oram) (blk : block) =
-  let len = length(toram) in
-  let rec iterate (i : int<public, _|_>) (acc : block) : unit<public, _|_> =
-    if i = len then
-      ()<public, _|_>
-    else
-      let curr = toram[i] <- default_block ()<public, _|_> in
-      let swap = not curr.is_some in
-      let (l, r) = mux(swap, curr, acc) in
-      let _ = toram[i] <- r in
-      iterate (i + 1<public, _|_>) l
-  in
-  iterate 0<public, _|_> blk
-in
-
-let trivial_add (toram : trivial_oram) (idx : int<secret, `r0>) (data : nr_data) =
-  trivial_add' toram { is_some = true<secret, `r0>
-                     ; idx     = idx
-                     ; data    = data
-                     }
-in
-
-let trivial_pop' (toram : trivial_oram) =
-  let len = length(toram) in
-  let rec iterate (i : int<public, _|_>) (acc : block) : block =
-    if i = len then
-      acc
-    else
-      let curr = toram[i] <- default_block ()<public, _|_> in
-      let swap = not acc.is_some && curr.is_some in
-      let (l, r) = mux(swap, curr, acc) in
-      let _ = toram[i] <- r in
-      iterate (i + 1<public, _|_>) l
-  in
-  iterate 0<public, _|_> (default_block ()<public, _|_>)
-
-in
-
-(************************
- ** NON-RECURSIVE ORAM **
- ************************)
-
-(** ASSUMPTION:
-      Size of the NR ORAM is exactly 2^k - 1, k >= 2.
-
-      This ensures that the tree is full and has at least depth 2. *)
-
-let nr_init (size : int<public, _|_>) (bucket_size : int<public, _|_>) =
-  array(size)[fun (_ : int<public, _|_>) . trivial_init bucket_size]
-in
 
 let nr_rr' (nroram : nr_oram) (idx : int<secret, _|_>) (tag : int<public, _|_>) =
   let len = length(nroram) in
@@ -258,16 +197,20 @@ in
  *************)
 
 let ostack_init (size : int<public, _|_>) (bucket_size : int<public, _|_>) =
-  { oram  = nr_init size bucket_size
-  ; idx_r = array(1<public, _|_>)[fun (_ : int<public, _|_>) . 0<secret, _|_>]
-  ; tag_r = array(1<public, _|_>)[fun (_ : int<public, _|_>) . rnd<secret, `r0>]
-  }
+  let term =
+    { oram  = nr_init size bucket_size
+    ; idx_r = array(1<public, _|_>)[fun (_ : int<public, _|_>) . 0<⊥>]
+    ; tag_r = array(1<public, _|_>)[fun (_ : int<public, _|_>) . rnd<{ 0 }>]
+    }
+  in
+  ⌊ ⊥ , ⌊ { 0 } , term ⌋ ⌋
 in
 
 let stackop (ostack : ostack) (ispush : bool<secret, _|_>) (data : user_data) =
+  let ⌊ meta , ⌊ ptr , ostack ⌋ ⌋ = ostack in
   let nroram = ostack.oram in
   let idx = ostack.idx_r[0<public, _|_>] in
-  let tag = ostack.tag_r[0<public, _|_>] <- rnd<secret, `r0> in
+  let tag = ostack.tag_r[0<public, _|_>] <- rnd<secret, ptr> in
 
   let (rr_idx, _) = mux(ispush, -1<secret, _|_>, idx) in
   let (rr_tag, add_tag) = mux(ispush, rnd<secret, `r0>, tag) in
