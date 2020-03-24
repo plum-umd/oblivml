@@ -209,54 +209,10 @@ let nr_evict' (nroram : nr_oram) (level : int) (loc : int) =
   let popped = trivial_pop' bucket in
   let default = default_block () in
 
-  let popped_nu = { is_some = popped.is_some
-                  ; idx     = popped.idx
-                  ; data    = { is_some = popped.data.is_some
-                              ; nr_tag  = popped.data.nr_tag
-                              ; nr_val  = { is_some    = popped.data.nr_val.is_some
-                                          ; ostack_tag = popped.data.nr_val.ostack_tag
-                                          ; ostack_val = popped.data.nr_val.ostack_val
-                                          }
-                              }
-                  } in
-
-  let default_nu = { is_some = default.is_some
-                   ; idx     = default.idx
-                   ; data    = { is_some = default.data.is_some
-                               ; nr_tag  = default.data.nr_tag
-                               ; nr_val  = { is_some    = default.data.nr_val.is_some
-                                           ; ostack_tag = default.data.nr_val.ostack_tag
-                                           ; ostack_val = default.data.nr_val.ostack_val
-                                           }
-                               }
-                   } in
-
   let left = (popped.data.nr_tag & mask) = 0 in
 
   (* Basically need to claim that this mux is OK *)
-  let (l_nu, r_nu) = mux(left, popped_nu, default_nu) in
-
-  let l = { is_some = l_nu.is_some
-          ; idx     = l_nu.idx
-          ; data    = { is_some = l_nu.data.is_some
-                      ; nr_tag  = l_nu.data.nr_tag
-                      ; nr_val  = { is_some    = l_nu.data.nr_val.is_some
-                                  ; ostack_tag = l_nu.data.nr_val.ostack_tag
-                                  ; ostack_val = l_nu.data.nr_val.ostack_val
-                                  }
-                      }
-          } in
-
-  let r = { is_some = r_nu.is_some
-          ; idx     = r_nu.idx
-          ; data    = { is_some = r_nu.data.is_some
-                      ; nr_tag  = r_nu.data.nr_tag
-                      ; nr_val  = { is_some    = r_nu.data.nr_val.is_some
-                                  ; ostack_tag = r_nu.data.nr_val.ostack_tag
-                                  ; ostack_val = r_nu.data.nr_val.ostack_val
-                                  }
-                      }
-          } in
+  let (l, r) = mux(left, popped, default) in
 
   let left_child  = nroram[(2 * loc) + 1] in
   let right_child = nroram[(2 * loc) + 2] in
