@@ -1,6 +1,8 @@
 open Core
 open Stdio
 
+exception SyntaxError of Position.t * String.t
+
 type t = { source_location  : Section.t
          ; datum : t'
          }

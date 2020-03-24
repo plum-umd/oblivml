@@ -59,6 +59,7 @@ in
  ** Default Values **
  ********************)
 
+
 let default_user_data _ =
   rnd<`r0 \/ `r1>
 in
@@ -69,6 +70,7 @@ let default_nr_data _ =
   ; nr_val  = default_user_data
   }
 in
+
 
 let default_block _ =
   { is_some = false
@@ -154,6 +156,7 @@ in
 let nr_init (size : int) (bucket_size : int) =
   array(size)[fun (_ : int) . trivial_init bucket_size]
 in
+
 
 let nr_rr' (nroram : nr_oram) (idx : int<secret>) (tag : int) =
   let len = length(nroram) in

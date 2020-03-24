@@ -1,15 +1,13 @@
 open Core
 open Stdio
 
-exception SyntaxError of Position.t * String.t
-
 let parse_string s =
   let lexbuf = Lexing.from_string s in
   lexbuf.lex_curr_p <- { lexbuf.lex_curr_p with pos_fname = "<string>" };
   try
     Some (Parser.start Lexer.token lexbuf)
   with
-  | SyntaxError (pos, msg) ->
+  | Source.SyntaxError (pos, msg) ->
     Printf.printf "%s\n%s" (Position.to_string pos) msg;
     None
 
@@ -19,9 +17,19 @@ let parse_file f   =
   try
     Some (Parser.start Lexer.token lexbuf)
   with
-  | SyntaxError (pos, msg) ->
+  | Source.SyntaxError (pos, msg) ->
     Printf.printf "%s\n%s" (Position.to_string pos) msg;
     None
+
+let parse_all dir =
+  let fs = Sys.ls_dir dir in
+  let fs = List.map ~f:(fun f -> dir ^ "/" ^ f) fs in
+  List.iter
+    ~f:(fun f ->
+        Printf.printf "Parsing %s...\n" f;
+        let _ : Source.t Option.t = parse_file f in
+        ())
+    fs
 
 let option_to_string t = function
   | None   -> "*"

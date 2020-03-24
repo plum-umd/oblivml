@@ -5,7 +5,7 @@
   open Lexing
   open Parser
 
-  exception SyntaxError of Position.t * String.t
+  open Source
 }
 
 let whitespace = [' ' '\t' ]

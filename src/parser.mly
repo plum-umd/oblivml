@@ -6,8 +6,6 @@
 
   open Source
 
-  exception SyntaxError of Position.t * String.t
-
   (** Annotate an AST node with positions in source. *)
   let annotate e =
     { source_location  = { l_pos = symbol_start_pos () ; r_pos = symbol_end_pos () }
@@ -295,8 +293,9 @@ fexpr :
 
 atexpr :
   /** Literal */
-  | TLIT { annotate (ELit { datum = $1
-                          ; label = Label.public }) }
+  | TLIT                      { annotate (ELit { datum  = $1
+                                               ; label  = Label.public
+                                               }) }
 
   | TLIT TALPAR TLABEL TARPAR { annotate (ELit { datum  = $1
                                                ; label  = $3
@@ -384,10 +383,9 @@ record_pattern :
 ;
 
 typ :
-  | TBTYP { Type.TBase ($1, Label.public, Region.bottom) }
-  | TBTYP TALPAR region TARPAR { Type.TBase ($1, Label.secret, $3) }
-  | TBTYP TALPAR TLABEL TARPAR { Type.TBase ($1, $3, Region.bottom) }
-  | TBTYP TALPAR TLABEL TCOMMA region TARPAR { Type.TBase ($1, $3, $5) }
+  | TBTYP                                    { Type.TBase ($1, Label.public, Region.bottom) }
+  | TBTYP TALPAR TLABEL TARPAR               { Type.TBase ($1, $3, Region.bottom) }
+  | TBTYP TALPAR region TARPAR               { Type.TBase ($1, Label.secret, $3) }
   | TVAR { Type.TAlias $1 }
   | typ TSTAR typ { Type.TTuple ($1, $3) }
   | TCLPAR record_typs TCRPAR { Type.TRecord $2 }
