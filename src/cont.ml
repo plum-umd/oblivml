@@ -124,7 +124,54 @@ let compose (c : 'v Runtime.t) (kf : 'v frame') : 'v Runtime.t' =
     let vs = Runtime.of_values bo.evaluated in
     let cs = vs @ [ c ] @ bo.remaining in
     EBOp { op = bo.op ; args = cs }
-  | _ -> failwith "TODO"
+  | KAOp ao ->
+    let vs = Runtime.of_values ao.evaluated in
+    let cs = vs @ [ c ] @ ao.remaining in
+    EAOp { op = ao.op ; args = cs }
+  | KARel ar ->
+    let vs = Runtime.of_values ar.evaluated in
+    let cs = vs @ [ c ] @ ar.remaining in
+    EARel { rel = ar.rel ; args = cs }
+  | KTupleL c' ->
+    ETuple (c, c')
+  | KTupleR c' ->
+    ETuple (Runtime.of_value c', c)
+  | KRecord r ->
+    let vs = List.map ~f:(fun (x, v) -> (x, Runtime.of_value v)) r.evaluated in
+    let cs = vs @ [ (r.x, c) ] @ r.remaining in
+    ERecord cs
+  | KArrInitSz init ->
+    EArrInit { size = c ; init = init }
+  | KArrInitInit sz ->
+    EArrInit { size = Runtime.of_value sz ; init = c }
+  | KArrReadLoc idx ->
+    EArrRead { loc = c ; idx = idx }
+  | KArrReadIdx loc ->
+    EArrRead { loc = Runtime.of_value loc ; idx = c }
+  | KArrWriteLoc r ->
+    EArrWrite { loc = c ; idx = r.idx ; value = r.value }
+  | KArrWriteIdx r ->
+    EArrWrite { loc = Runtime.of_value r.loc ; idx = c ; value = r.value }
+  | KArrWriteVal r ->
+    EArrWrite { loc = Runtime.of_value r.loc ; idx = Runtime.of_value r.idx ; value = c }
+  | KArrLen ->
+    EArrLen c
+  | KMuxGuard r ->
+    EMux { guard = c ; lhs = r.lhs ; rhs = r.rhs }
+  | KMuxL r ->
+    EMux { guard = Runtime.of_value r.guard ; lhs = c ; rhs = r.rhs }
+  | KMuxR r ->
+    EMux { guard = Runtime.of_value r.guard ; lhs = Runtime.of_value r.lhs ; rhs = c }
+  | KAppLam arg ->
+    EApp { lam = c ; arg = arg }
+  | KAppArg lam ->
+    EApp { lam = Runtime.of_value lam ; arg = c }
+  | KLet r ->
+    ELet { pat = r.pat ; value = c ; body = r.body }
+  | KIf r ->
+    EIf { guard = c ; thenb = r.thenb ; elseb = r.elseb }
+  | KPrint ->
+    EPrint c
 
 let pop (c : 'v Runtime.t) (k : 'v t) : ('v Runtime.t * 'v t) =
   assert (Runtime.is_value c);
