@@ -38,7 +38,79 @@ let decompose (c : 'v Runtime.t') : ('v Runtime.t * 'v frame') =
      | c' :: cs' ->
        (c', KBOp { op = bo.op ; evaluated = vs ; remaining = cs' })
      | _ -> failwith "Impossible")
-  | _ -> failwith "TODO"
+  | EAOp ao ->
+    let (vs, cs) = List.split_while ~f:Runtime.is_value ao.args in
+    let vs = Runtime.to_values vs in
+    (match cs with
+     | c' :: cs' ->
+       (c', KAOp { op = ao.op ; evaluated = vs ; remaining = cs' })
+     | _ -> failwith "Impossible")
+  | EARel ar ->
+    let (vs, cs) = List.split_while ~f:Runtime.is_value ar.args in
+    let vs = Runtime.to_values vs in
+    (match cs with
+     | c' :: cs' ->
+       (c', KARel { rel = ar.rel ; evaluated = vs ; remaining = cs' })
+     | _ -> failwith "Impossible")
+  | ETuple (e1, e2) ->
+    if Runtime.is_value e1 then
+      let v1 = Runtime.to_value e1 in
+      (e2, KTupleR v1)
+    else
+      (e1, KTupleL e2)
+  | ERecord fields ->
+    let (vs, cs) = List.split_while ~f:(Fn.compose Runtime.is_value Tuple.T2.get2) fields in
+    let vs = List.map ~f:(fun (x, c) -> (x, Runtime.to_value c)) vs in
+    (match cs with
+     | (x, c') :: cs' ->
+       (c', KRecord { evaluated = vs ; x = x ; remaining = cs' })
+     | __ -> failwith "Impossible")
+  | EArrInit ai ->
+    if Runtime.is_value ai.size then
+      let vsize = Runtime.to_value ai.size in
+      (ai.init, KArrInitInit vsize)
+    else
+      (ai.size, KArrInitSz ai.init)
+  | EArrRead ar ->
+    if Runtime.is_value ar.loc then
+      let vloc = Runtime.to_value ar.loc in
+      (ar.idx, KArrReadIdx vloc)
+    else
+      (ar.loc, KArrReadLoc ar.idx)
+  | EArrWrite aw ->
+    if Runtime.is_value aw.loc then
+      let vloc = Runtime.to_value aw.loc in
+      if Runtime.is_value aw.idx then
+        let vidx = Runtime.to_value aw.idx in
+        (aw.value, KArrWriteVal { loc = vloc ; idx = vidx })
+      else
+        (aw.idx, KArrWriteIdx { loc = vloc ; value = aw.value })
+    else
+      (aw.loc, KArrWriteLoc { idx = aw.idx ; value = aw.value })
+  | EArrLen loc -> (loc, KArrLen)
+  | EMux m ->
+    if Runtime.is_value m.guard then
+      let vguard = Runtime.to_value m.guard in
+      if Runtime.is_value m.lhs then
+        let vlhs = Runtime.to_value m.lhs in
+        (m.rhs, KMuxR { guard = vguard ; lhs = vlhs })
+      else
+        (m.lhs, KMuxL { guard = vguard ; rhs = m.rhs })
+    else
+      (m.guard, KMuxGuard { lhs = m.lhs ; rhs = m.rhs })
+  | EApp ap ->
+    if Runtime.is_value ap.lam then
+      let vlam = Runtime.to_value ap.lam in
+      (ap.arg, KAppArg vlam)
+    else
+      (ap.lam, KAppLam ap.arg)
+  | ELet l ->
+    (l.value, KLet { pat = l.pat ; body = l.body })
+  | EIf ite ->
+    (ite.guard, KIf { thenb = ite.thenb ; elseb = ite.elseb })
+  | EPrint p ->
+    (p, KPrint)
+  | _ -> failwith "Impossible"
 
 let push (c : 'v Runtime.t) (k : 'v t) : ('v Runtime.t * 'v t) =
   assert (not (Runtime.is_redex c));
