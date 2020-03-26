@@ -3,10 +3,13 @@
     The revelation on line 12 fails to typecheck, but the actual
     revelation on line 16 is safe because `v` is uniformly distributed. *)
 
+(** We have gotten rid of `trust` and `prove` in hopes of establishing
+    something better. *)
+(*
 (* `s` is our secret *)
-let s = true<secret, _|_> in
+let (s : bool<secret>) = true in
 (* `r0` and `r1` are two coin flips *)
-let (r0, r1) = (flip<secret, `r0>, flip<secret, `r1>) in
+let (r0, r1) = (flip<`r0>, flip<`r1>) in
 let r0_s = use(r0) in
 let r0_nu = trust(r0) in
 let r1_nu = trust(r1) in
@@ -17,3 +20,5 @@ let (v, _) = mux (g, v1, v2) in
 (* Revealing is safe, since `v` = `r0` *)
 let v_u = prove(v) in
 reveal(v_u)
+*)
+()

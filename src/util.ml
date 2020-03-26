@@ -21,9 +21,19 @@ let parse_file f   =
     Printf.printf "%s\n%s" (Position.to_string pos) msg;
     None
 
+let is_lo f = Filename.check_suffix f ".lo"
+
 let parse_all dir =
   let fs = Sys.ls_dir dir in
-  let fs = List.map ~f:(fun f -> dir ^ "/" ^ f) fs in
+  let fs =
+    List.filter_map
+      ~f:(fun f ->
+          if is_lo f then
+            Some (Filename.concat dir f)
+          else
+            None)
+      fs
+  in
   List.iter
     ~f:(fun f ->
         Printf.printf "Parsing %s...\n" f;
