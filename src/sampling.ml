@@ -1,7 +1,9 @@
 open Core
 
-module PrimitiveImpl : Primitive.S =
+module Reduction : Eval.Reduction =
 struct
+  open Runtime
+
   type value =
     | VUnit
     | VBool   of { value : Bool.t
@@ -29,24 +31,29 @@ struct
 
   let empty = { e = Map.empty (module Var) ; s = Map.empty (module Loc) }
 
-  let reduce e = failwith "TODO"
+  let denote_lit d l =
+    match d with
+    | Literal.LitUnit () -> VUnit
+    | Literal.LitBool b -> VBool { value = b ; label = l ; region = Region.bottom }
+    | Literal.LitInt n -> VInt { value = n ; label = l ; region = Region.bottom }
+
+  let denote_flip r = VFlip { value = (Random.bool ()) ; region = r }
+
+  let denote_rnd r = VRnd { value = (Random.bits ()) ; region = r }
+
+  let reduce c { e ; s } =
+    match c.datum with
+    | ELit l -> ({ c with datum = EVal (denote_lit l.datum l.label) }, { e ; s })
+    | EFlip r -> ({ c with datum = EVal (denote_flip r) }, { e  ; s })
+    | ERnd r -> ({ c with datum = EVal (denote_rnd r) }, { e ; s })
 end
 
-include Eval.Make(PrimitiveImpl)
+include Eval.Make(Reduction)
 
 (*
 
 let reduce c e s =
   match c.cdatum with
-  | ELit l ->
-    let v =
-      (match l.datum with
-       | Literal.LitUnit () -> VUnit
-       | Literal.LitBool b -> VBool { value = b ; label = l.label ; region = Region.bottom }
-       | Literal.LitInt n -> VInt { value = n ; label = l.label ; region = Region.bottom })
-    in
-    ({ c with cdatum = EVal v }, e, s)
-  | EVal _ -> failwith "Impossible, not a redex."
   | EFlip r -> ({ c with cdatum = EVal (VFlip { value = (Random.bool ()) ; region = r }) }, e, s)
   | ERnd r -> ({ c with cdatum = EVal (VRnd { value = (Random.bits ()) ; region = r }) }, e, s)
   | EVar path ->

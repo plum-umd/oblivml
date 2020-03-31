@@ -1,6 +1,28 @@
 open Core
 
-module Make (P : Primitive.S) : Eval_intf.S with type value = P.value and type s = P.t =
+module type Reduction =
+sig
+  type value
+  type t
+
+  val empty : t
+
+  val reduce : value Runtime.t -> t -> (value Runtime.t * t)
+end
+
+module type S =
+sig
+  type value
+  type c = value Runtime.t
+  type k = value Cont.t
+  type s
+
+  type t = { c : c ; k : k ; s : s }
+
+  val eval : value Runtime.t -> t
+end
+
+module Make (P : Reduction) : S with type value = P.value and type s = P.t =
 struct
   type value = P.value
   type c = value Runtime.t
