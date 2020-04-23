@@ -35,6 +35,8 @@ struct
 
   type store = (Loc.t, value Array.t, Loc.comparator_witness) Map.t
 
+  let store_to_string s = "{ TODO }"
+
   type state = { e : env ; s : store }
 
   let empty = { e = Map.empty (module Var) ; s = Map.empty (module Loc) }
@@ -126,29 +128,231 @@ struct
   let denote_aop op args =
     failwith "TODO -- there are many ops and they are so so boring."
 
+  let denote_arel rel args =
+    failwith "TODO"
+
+  let denote_arrinit vsz init s =
+    match vsz.Value.datum with
+    | VInt n ->
+      let l  = Loc.fresh () in
+      let c' = Runtime.EArrFill { loc = l ; idx = 0 ; init = init } in
+      let s' = Map.add_exn ~key:l ~data:(Array.create ~len:n.value VUnit) s in
+      Or_error.return (c', s')
+    | _ ->
+      let msg =
+        Printf.sprintf "Type Error: Array of size %s."
+          (value_to_string vsz)
+      in
+      Or_error.error_string msg
+
+  let denote_arrread vloc vidx s =
+    match vloc.Value.datum, vidx.Value.datum with
+    | VLoc l, VInt n ->
+      (match Map.find s l with
+       | Some storev -> Or_error.return storev.(n.value)
+       | None ->
+         let msg = Printf.sprintf "Location %s not found in store %s."
+             (Loc.to_string l)
+             (store_to_string s)
+         in
+         Or_error.error_string msg)
+    | _ ->
+      let msg =
+        Printf.sprintf "Type Error: Array at location %s indexed at %s."
+          (value_to_string vloc)
+          (value_to_string vidx)
+      in
+      Or_error.error_string msg
+
+  let denote_arrwrite vloc vidx v s =
+    match vloc.Value.datum, vidx.Value.datum with
+    | VLoc l, VInt n ->
+      (match Map.find s l with
+       | Some storev ->
+         let result = storev.(n.value) in
+         storev.(n.value) <- v.Value.datum;
+         Or_error.return result
+       | None ->
+         let msg = Printf.sprintf "Location %s not found in store %s."
+             (Loc.to_string l)
+             (store_to_string s)
+         in
+         Or_error.error_string msg)
+    | _ ->
+      let msg =
+        Printf.sprintf "Type Error: Array at location %s indexed at %s being written value %s."
+          (value_to_string vloc)
+          (value_to_string vidx)
+          (value_to_string v)
+      in
+      Or_error.error_string msg
+
+  let denote_arrlen vloc s =
+    match vloc.Value.datum with
+    | VLoc l ->
+      (match Map.find s l with
+       | Some storev ->
+         Or_error.return (VInt { value = Array.length storev ; label = Label.public ; region = Region.bottom })
+       | None ->
+         let msg = Printf.sprintf "Location %s not found in store %s."
+             (Loc.to_string l)
+             (store_to_string s)
+         in
+         Or_error.error_string msg)
+    | _ ->
+      let msg =
+        Printf.sprintf "Type Error: Length of array at location %s."
+          (value_to_string vloc)
+      in
+      Or_error.error_string msg
+
+  let denote_cast x l e =
+    match Map.find e x with
+    | Some r ->
+       let v = !r in
+       (match v with
+        | VFlip flip -> Or_error.return (VBool { value = flip.value ; label = l ; region = flip.region })
+        | VRnd rnd   -> Or_error.return (VInt { value = rnd.value ; label = l ; region = rnd.region })
+        | _ ->
+          let msg =
+            Printf.sprintf "Type Error: Cast of %s."
+              (value_to_string' v)
+          in
+          Or_error.error_string msg)
+    | None ->
+      let msg =
+        Printf.sprintf "Variable %s not found in environment %s."
+          (Var.to_string x)
+          (env_to_string e)
+      in
+      Or_error.error_string msg
+
+  let denote_mux vg vlhs vrhs =
+    match vg.Value.datum with
+    | VBool b ->
+      let (v2', v3') = if b.value then (vlhs, vrhs) else (vrhs, vlhs) in
+      Or_error.return (VTuple (v2'.Value.datum, v3'.Value.datum))
+    | _ ->
+      let msg =
+        Printf.sprintf "Type Error: Mux of %s."
+          (value_to_string vg)
+      in
+      Or_error.error_string msg
+
+  let merge m1 m2 =
+    Map.merge
+      ~f:(fun ~key:x v ->
+          match v with
+          | `Left v1 -> (Some v1)
+          | `Right v2 -> (Some v2)
+          | `Both (_, v2) -> (Some v2))
+      m1 m2
+
+  let rec bind p v =
+    match p, v with
+    | (Pattern.XWild, _)                        -> Map.empty (module Var)
+    | (Pattern.XVar x, _)                       -> Map.singleton (module Var) x (ref v)
+    | (Pattern.XTuple (p1, p2), VTuple (v1, v2)) ->
+       let bs1 = bind p1 v1 in
+       let bs2 = bind p2 v2 in
+       merge bs1 bs2
+    | (Pattern.XRecord ps, VRecord fs) ->
+      List.fold
+        ps
+        ~init:(Map.empty (module Var))
+        ~f:(fun m (f, pi) ->
+            match Map.find fs f with
+
+
+  let denote_apply vlam varg e =
+    match vlam.Value.datum with
+    | VAbs f ->
+      let e' = bind f.env f.pat varg in
+      Or_error.return (f.body, e')
+    | _ ->
+      let msg =
+        Printf.sprintf "Type Error: Application of %s to %s."
+          (value_to_string vlam)
+          (value_to_string varg)
+      in
+      Or_error.error_string msg
+
   let reduce c { e ; s } =
-    let tag = Or_error.tag ~tag:(Section.to_string c.source_location) in
+    let tag x = Or_error.tag ~tag:(Section.to_string c.source_location) x in
+    let open Or_error.Let_syntax in
     match c.datum with
     | ELit l -> Or_error.return ({ c with datum = EVal (denote_lit l.datum l.label) }, { e ; s })
     | EFlip r -> Or_error.return ({ c with datum = EVal (denote_flip r) }, { e  ; s })
     | ERnd r -> Or_error.return ({ c with datum = EVal (denote_rnd r) }, { e ; s })
     | EVar (x :: acs) ->
-      let open Or_error.Let_syntax in
       let r = denote_var x acs e in
       let%bind v = tag r in
       Or_error.return ({ c with datum = EVal v }, { e ; s })
     | EBOp bo ->
       let vargs = Runtime.to_values bo.args in
-      let open Or_error.Let_syntax in
       let r = denote_bop bo.op vargs in
       let%bind v = tag r in
       Or_error.return ({ c with datum = EVal v }, { e ; s })
     | EAOp ao ->
       let vargs = Runtime.to_values ao.args in
-      let open Or_error.Let_syntax in
       let r = denote_aop ao.op vargs in
       let%bind v = tag r in
       Or_error.return ({ c with datum = EVal v }, { e ; s })
+    | EARel ar ->
+      let vargs = Runtime.to_values ar.args in
+      let r = denote_arel ar.rel vargs in
+      let%bind v = tag r in
+      Or_error.return ({ c with datum = EVal v }, { e ; s })
+    | ETuple (l, r) ->
+      let vl = Runtime.to_value l in
+      let vr = Runtime.to_value r in
+      Or_error.return ({ c with datum = EVal (VTuple (vl.datum, vr.datum)) }, { e ; s })
+    | ERecord fields ->
+      let vfields = List.map ~f:(fun (x, e) -> (x, (Runtime.to_value e).datum)) fields in
+      Or_error.return ({ c with datum = EVal (VRecord vfields) }, { e ; s })
+    | EArrInit ai ->
+      let vsz = Runtime.to_value ai.size in
+      let r = denote_arrinit vsz ai.init s in
+      let%bind (c', s') = tag r in
+      Or_error.return ({ c with datum = c' }, { e ; s = s' })
+    | EArrFill af -> failwith "Come back after implementing application"
+    | EArrRead ar ->
+      let vloc, vidx = Runtime.to_value ar.loc, Runtime.to_value ar.idx in
+      let r = denote_arrread vloc vidx s in
+      let%bind v = tag r in
+      Or_error.return ({ c with datum = EVal v }, { e ; s })
+    | EArrWrite aw ->
+      let vloc, vidx, v = Runtime.to_value aw.loc, Runtime.to_value aw.idx, Runtime.to_value aw.value in
+      let r = denote_arrwrite vloc vidx v s in
+      let%bind v = tag r in
+      Or_error.return ({ c with datum = EVal v }, { e ; s })
+    | EArrLen l ->
+      let vloc = Runtime.to_value l in
+      let r = denote_arrlen vloc s in
+      let%bind v = tag r in
+      Or_error.return ({ c with datum = EVal v }, { e ; s })
+    | ECast cast ->
+      let r = denote_cast cast.var cast.label e in
+      let%bind v = tag r in
+      Or_error.return ({ c with datum = EVal v }, { e ; s })
+    | EMux m ->
+      let vguard, vlhs, vrhs = Runtime.to_value m.guard, Runtime.to_value m.lhs, Runtime.to_value m.rhs in
+      let r = denote_mux vguard vlhs vrhs in
+      let%bind v = tag r in
+      Or_error.return ({ c with datum = EVal v }, { e ; s })
+    | EAbs f -> Or_error.return ({ c with datum = EVal (VAbs { env = e ; pat = f.pat ; body = f.body }) }, { e ; s })
+    | ERec f ->
+      let bogus = ref VUnit in
+      let lam = VAbs { env = Map.set e ~key:f.name ~data:bogus ; pat = f.pat ; body = f.body } in
+      bogus := lam;
+      Or_error.return ({ c with datum = EVal lam }, { e ; s })
+    | EApp ap ->
+      let vlam, varg = Runtime.to_value ap.lam, Runtime.to_value ap.arg in
+      let r = denote_apply vlam varg e in
+      let%bind (c', e') = tag r in
+      Or_error.return ({ c with datum = c' }, { e = e' ; s })
+
+
 
 end
 
@@ -158,129 +362,7 @@ include Eval.Make(Reduction)
 
 let reduce c e s =
   match c.cdatum with
-  | EARel ar ->
-    let vargs = exprs_to_values ar.args in
-    ({ c with cdatum = EVal (denote_ar loc ar.rel vargs) }, e, s)
-  | ETuple (l, r) ->
-    let vl = expr_to_value l in
-    let vr = expr_to_value r in
-    ({ c with cdatum = EVal (VTuple (vl, vr)) }, e, s)
-  | ERecord fields ->
-    let vfields = List.map ~f:(fun (x, e) -> (x, expr_to_value e)) fields in
-    ({ c with cdatum = EVal (VRecord vfields) }, e, s)
-  | EArrInit ai ->
-    let vsz, vinit = expr_to_value ai.size, expr_to_value ai.init in
-    (match vsz.vdatum, vinit.vdatum with
-     | VInt n, VAbs f -> failwith "TODO"
-       (* hmm *)
-     | _ ->
-       let msg =
-         Printf.sprintf "Type Error: Array of size %s initialized by %s."
-           (value_to_string vsz)
-           (value_to_string vinit)
-       in
-       raise (RuntimeError (c.csource_location, msg)))
-  | EArrRead ar ->
-    let vloc, vidx = expr_to_value ar.loc, expr_to_value ar.idx in
-    (match vloc.vdatum, vidx.vdatum with
-     | VLoc l, VInt n ->
-       (match Map.find s l with
-        | Some storev -> ({ c with cdatum = EVal storev.(n.value) }, e, s)
-        | None ->
-          let msg = Printf.sprintf "Location %s not found in store %s."
-              (Loc.to_string l)
-              (store_to_string s)
-          in
-          raise (RuntimeError (c.csource_location, msg)))
-     | _ ->
-       let msg =
-         Printf.sprintf "Type Error: Array at location %s indexed at %s."
-           (value_to_string vloc)
-           (value_to_string vidx)
-       in
-       raise (RuntimeError (c.csource_location, msg)))
-  | EArrWrite aw ->
-    let vloc, vidx, v = expr_to_value aw.loc, expr_to_value aw.idx, expr_to_value aw.value in
-    (match vloc.vdatum, vidx.vdatum with
-     | VLoc l, VInt n ->
-       (match Map.find s l with
-        | Some storev ->
-          let result = storev.(n.value) in
-          storev.(n.value) <- v.vdatum; ({ c with cdatum = EVal result }, e, s)
-        | None ->
-          let msg = Printf.sprintf "Location %s not found in store %s."
-              (Loc.to_string l)
-              (store_to_string s)
-          in
-          raise (RuntimeError (c.csource_location, msg)))
-     | _ ->
-       let msg =
-         Printf.sprintf "Type Error: Array at location %s indexed at %s being written value %s."
-           (value_to_string vloc)
-           (value_to_string vidx)
-           (value_to_string v)
-       in
-       raise (RuntimeError (c.csource_location, msg)))
-  | EArrLen l ->
-    let vloc = expr_to_value l in
-    (match vloc.vdatum with
-     | VLoc l ->
-       (match Map.find s l with
-        | Some storev -> ({ c with cdatum = EVal (VInt { value = Array.length storev ; label = Label.public ; region = Region.bottom }) }, e, s)
-        | None ->
-          let msg = Printf.sprintf "Location %s not found in store %s."
-              (Loc.to_string l)
-              (store_to_string s)
-          in
-          raise (RuntimeError (c.csource_location, msg)))
-     | _ ->
-       let msg =
-         Printf.sprintf "Type Error: Length of array at location %s."
-           (value_to_string vloc)
-       in
-       raise (RuntimeError (c.csource_location, msg)))
-  | ECast cast ->
-    (match Map.find e cast.var with
-     | Some r ->
-       let v = !r in
-       let v' =
-         (match v with
-          | VFlip flip -> VBool { value = flip.value ; label = cast.label ; region = flip.region }
-          | VRnd rnd -> VInt { value = rnd.value ; label = cast.label ; region = rnd.region }
-          | _ ->
-            let msg =
-              Printf.sprintf "Type Error: Cast of %s."
-                (value_to_string v)
-            in
-            raise (RuntimeError (c.csource_location, msg)))
-       in
-       ({ c with cdatum = EVal v' }, e, s)
-     | None ->
-       let msg =
-         Printf.sprintf "Variable %s not found in environment %s."
-           (Var.to_string cast.var)
-           (env_to_string e)
-       in
-       raise (RuntimeError (c.csource_location, msg)))
 
-  | EMux m ->
-    let vguard, vlhs, vrhs = expr_to_value m.guard, expr_to_value m.lhs, expr_to_value m.rhs in
-    (match vguard.vdatum with
-     | VBool b ->
-       let (v2', v3') = if b.value then (vlhs, vrhs) else (vrhs, vlhs) in
-       ({ c with cdatum = EVal (VTuple (v2', v3')) }, e, s)
-     | _ ->
-       let msg =
-         Printf.sprintf "Type Error: Mux of %s."
-           (value_to_string vguard)
-       in
-       raise (RuntimeError (c.csource_location, msg)))
-  | EAbs f -> ({ c with cdatum = EVal (VAbs { env = e ; pat = f.pat ; body = f.body }) }, e, s)
-  | ERec f ->
-    let bogus = ref VUnit in
-    let lam = VAbs { env = Map.set e ~key:f.name ~data:bogus ; pat = f.pat ; body = f.body } in
-    bogus := lam;
-    ({ c with cdatum = EVal lam }, e, s)
   | EApp ap ->
     let vlam, varg = expr_to_value ap.lam, expr_to_value ap.arg in
     (match vlam.vdatum with

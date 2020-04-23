@@ -49,6 +49,7 @@ let rec bind_type p t =
   | _ ->
     raise PatternError
 
+
 let rec to_string p =
   match p with
   | XWild           -> "_"
