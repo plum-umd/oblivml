@@ -25,6 +25,24 @@ struct
 
   let value_to_string' = function
     | VUnit -> "()"
+    | VBool b ->
+      Printf.sprintf "Bool(%s<%s,%s>)"
+        (Bool.to_string b.value)
+        (Label.to_string b.label)
+        (Region.to_string b.region)
+    | VInt n ->
+      Printf.sprintf "Int(%s<%s,%s>)"
+        (Int.to_string n.value)
+        (Label.to_string n.label)
+        (Region.to_string n.region)
+    | VFlip f ->
+      Printf.sprintf "Flip(%s<%s>)"
+        (Bool.to_string f.value)
+        (Region.to_string f.region)
+    | VRnd r ->
+      Printf.sprintf "Rnd(%s<%s>)"
+        (Int.to_string r.value)
+        (Region.to_string r.region)
     | _ -> failwith "Unimplemented"
 
   let value_to_string v = Value.to_string v value_to_string'
@@ -249,26 +267,59 @@ struct
       m1 m2
 
   let rec bind p v =
+    let open Or_error.Let_syntax in
     match p, v with
-    | (Pattern.XWild, _)                        -> Map.empty (module Var)
-    | (Pattern.XVar x, _)                       -> Map.singleton (module Var) x (ref v)
+    | (Pattern.XWild, _) -> Or_error.return []
+    | (Pattern.XVar x, _) -> Or_error.return [(x, ref v)]
     | (Pattern.XTuple (p1, p2), VTuple (v1, v2)) ->
-       let bs1 = bind p1 v1 in
-       let bs2 = bind p2 v2 in
-       merge bs1 bs2
+      let%bind bs1 = bind p1 v1 in
+      let%bind bs2 = bind p2 v2 in
+      Or_error.return (bs1 @ bs2)
     | (Pattern.XRecord ps, VRecord fs) ->
-      List.fold
-        ps
-        ~init:(Map.empty (module Var))
-        ~f:(fun m (f, pi) ->
-            match Map.find fs f with
+      let check =
+        List.fold2
+          ps
+          fs
+          ~init:[]
+          ~f:(fun acc (f1, p') (f2, v') ->
+              if Var.equal f1 f2 then
+                (bind p' v') :: acc
+              else
+                let msg =
+                  Printf.sprintf "Binding Error: Record fields %s and %s do not match."
+                    (Var.to_string f1)
+                    (Var.to_string f2) in
+                Or_error.error_string msg :: acc)
+      in
+      (match check with
+       | Ok l ->
+         let%bind l = Or_error.combine_errors l in
+         Or_error.return (List.join l)
+       | Unequal_lengths ->
+         let msg =
+           Printf.sprintf "Binding Error: Record pattern and value are different sizes."
+         in
+         Or_error.error_string msg)
+    | (Pattern.XAscr (p', _), _) -> bind p' v
+    | _ ->
+      let msg =
+        Printf.sprintf "Binding Error: Incompatible pattern, %s, and value, %s."
+          (Pattern.to_string p)
+          (value_to_string' v)
+      in
+      Or_error.error_string msg
 
+  let bind_map p v =
+    let open Or_error.Let_syntax in
+    let%bind l = bind p v in
+    Map.of_alist_or_error (module Var) l
 
   let denote_apply vlam varg e =
+    let open Or_error.Let_syntax in
     match vlam.Value.datum with
     | VAbs f ->
-      let e' = bind f.env f.pat varg in
-      Or_error.return (f.body, e')
+      let%bind e' = bind_map f.pat varg.Value.datum in
+      Or_error.return (f.body, merge f.env e')
     | _ ->
       let msg =
         Printf.sprintf "Type Error: Application of %s to %s."
@@ -276,6 +327,23 @@ struct
           (value_to_string varg)
       in
       Or_error.error_string msg
+
+  let denote_ite vguard thenb elseb =
+    match vguard.Value.datum with
+    | VBool b ->
+      if b.value then
+        Or_error.return thenb
+      else
+        Or_error.return elseb
+    | _ ->
+      let msg =
+        Printf.sprintf "Type Error: Guard of conditional, %s, is not a boolean."
+          (value_to_string vguard)
+      in
+      Or_error.error_string msg
+
+  let denote_print v =
+    Printf.printf "%s\n" (value_to_string v)
 
   let reduce c { e ; s } =
     let tag x = Or_error.tag ~tag:(Section.to_string c.source_location) x in
@@ -350,54 +418,23 @@ struct
       let vlam, varg = Runtime.to_value ap.lam, Runtime.to_value ap.arg in
       let r = denote_apply vlam varg e in
       let%bind (c', e') = tag r in
-      Or_error.return ({ c with datum = c' }, { e = e' ; s })
-
+      Or_error.return (c', { e = e' ; s })
+    | ELet l ->
+      let v = Runtime.to_value l.value in
+      let%bind e' = tag (bind_map l.pat v.Value.datum) in
+      Or_error.return (l.body, { e = merge e e' ; s })
+    | EIf ite ->
+      let vguard = Runtime.to_value ite.guard in
+      let%bind c' = tag (denote_ite vguard ite.thenb ite.elseb) in
+      Or_error.return (c', { e ; s })
+    | EPrint t ->
+      let v = Runtime.to_value t in
+      (denote_print v;
+       Or_error.return ({ c with datum = EVal VUnit }, { e ; s }))
+    | EVar [] -> failwith "Impossible, forbidden by parser."
+    | EVal _  -> failwith "Impossible, forbidden by evaluator."
 
 
 end
 
 include Eval.Make(Reduction)
-
-(*
-
-let reduce c e s =
-  match c.cdatum with
-
-  | EApp ap ->
-    let vlam, varg = expr_to_value ap.lam, expr_to_value ap.arg in
-    (match vlam.vdatum with
-     | VAbs f ->
-       let e' = apply f.env f.pat varg in
-       (f.body, e', s)
-     | _ ->
-       let msg =
-         Printf.sprintf "Type Error: Application of %s to %s."
-           (value_to_string vlam)
-           (value_to_string varg)
-       in
-       raise (RuntimeError (c.csource_location, msg)))
-  | ELet l ->
-    let v = expr_to_value l.value in
-    let e' = apply e l.pat v in
-    (l.body, e', s)
-  | EIf ite ->
-    let vguard = expr_to_value ite.guard in
-    (match vguard.vdatum with
-     | VBool b ->
-       if b.value then
-         (ite.thenb, e, s)
-       else
-         (ite.elseb, e, s)
-     | _ ->
-       let msg =
-         Printf.sprintf "Type Error: If %s then %s else %s."
-           (value_to_string vguard)
-           (expr_to_string ite.thenb)
-           (expr_to_string ite.elseb)
-       in
-       raise (RuntimeError (c.csource_location, msg)))
-  | EPrint r ->
-    let v = expr_to_value r in
-    Printf.printf "%s\n" (value_to_string v);
-    ({ c with cdatum = EVal VUnit }, e, s)
-*)
