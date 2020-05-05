@@ -1,0 +1,8 @@
+(executables
+  (names all)
+  (libraries oblivml ounit2))
+
+(alias
+  (name runtest)
+  (action
+    (progn (run ./all.exe))))
