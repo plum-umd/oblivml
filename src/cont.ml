@@ -24,10 +24,11 @@ type 'v frame' =
   | KIf          of { thenb : 'v Runtime.t ; elseb : 'v Runtime.t }
   | KPrint
 
-type 'v frame = { source_location : Section.t
+type ('v, 'e) frame = { source_location : Section.t
+                ; env : 'e
                 ; datum : 'v frame' }
 
-type 'v t = 'v frame List.t
+type ('v, 'e) t = ('v, 'e) frame List.t
 
 let decompose (c : 'v Runtime.t') : ('v Runtime.t * 'v frame') =
   match c with
@@ -112,11 +113,11 @@ let decompose (c : 'v Runtime.t') : ('v Runtime.t * 'v frame') =
     (p, KPrint)
   | _ -> failwith "Impossible"
 
-let push (c : 'v Runtime.t) (k : 'v t) : ('v Runtime.t * 'v t) =
+let push (c : 'v Runtime.t) (e : 'e) (k : ('v, 'e) t) : ('v Runtime.t * ('v, 'e) t) =
   assert (not (Runtime.is_redex c));
   assert (not (Runtime.is_value c));
   let (c', kf') = decompose c.datum in
-  (c', { source_location = c.source_location ; datum = kf' } :: k)
+  (c', { source_location = c.source_location ; env = e ; datum = kf' } :: k)
 
 let compose (c : 'v Runtime.t) (kf : 'v frame') : 'v Runtime.t' =
   match kf with
@@ -173,9 +174,9 @@ let compose (c : 'v Runtime.t) (kf : 'v frame') : 'v Runtime.t' =
   | KPrint ->
     EPrint c
 
-let pop (c : 'v Runtime.t) (k : 'v t) : ('v Runtime.t * 'v t) =
+let pop (c : 'v Runtime.t) (k : ('v, 'e) t) : ('v Runtime.t * 'e * ('v, 'e) t) =
   assert (Runtime.is_value c);
   assert (not (List.is_empty k));
   match k with
-  | kf :: k' -> ({ source_location = kf.source_location ; datum = compose c kf.datum }, k')
+  | kf :: k' -> ({ source_location = kf.source_location ; datum = compose c kf.datum }, kf.env, k')
   | _ -> failwith "Impossible"

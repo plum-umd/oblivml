@@ -7,7 +7,7 @@ let parse_string s =
   try
     Some (Parser.start Lexer.token lexbuf)
   with
-  | Source.SyntaxError (pos, msg) ->
+  | SyntaxError.SyntaxError (pos, msg) ->
     Printf.printf "%s\n%s" (Position.to_string pos) msg;
     None
 
@@ -17,7 +17,7 @@ let parse_file f   =
   try
     Some (Parser.start Lexer.token lexbuf)
   with
-  | Source.SyntaxError (pos, msg) ->
+  | SyntaxError.SyntaxError (pos, msg) ->
     Printf.printf "%s\n%s" (Position.to_string pos) msg;
     None
 

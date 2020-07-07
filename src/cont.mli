@@ -25,11 +25,12 @@ type 'v frame' =
   | KIf          of { thenb : 'v Runtime.t ; elseb : 'v Runtime.t }
   | KPrint
 
-type 'v frame = { source_location : Section.t
-                ; datum : 'v frame' }
+type ('v, 'e) frame = { source_location : Section.t
+                      ; env : 'e
+                      ; datum : 'v frame' }
 
-type 'v t = 'v frame List.t
+type ('v, 'e) t = ('v, 'e) frame List.t
 
-val push : 'v Runtime.t -> 'v t -> 'v Runtime.t * 'v t
+val push : 'v Runtime.t -> 'e -> ('v, 'e) t -> 'v Runtime.t * ('v, 'e) t
 
-val pop : 'v Runtime.t -> 'v t -> 'v Runtime.t * 'v t
+val pop : 'v Runtime.t -> ('v, 'e) t -> 'v Runtime.t * 'e * ('v, 'e) t

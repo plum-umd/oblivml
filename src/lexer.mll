@@ -5,7 +5,7 @@
   open Lexing
   open Parser
 
-  open Source
+  open SyntaxError
 }
 
 let whitespace = [' ' '\t' ]

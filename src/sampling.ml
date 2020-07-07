@@ -49,15 +49,17 @@ struct
 
   type env = (Var.t, value Ref.t, Var.comparator_witness) Map.t
 
-  let env_to_string e = "{ TODO }"
+  let env_empty = Map.empty (module Var)
+
+  let env_to_string e =
+    let binds = List.map ~f:(fun (k, v) -> Printf.sprintf "%s -> %s" (Var.to_string k) "") (Map.to_alist e) in
+    Printf.sprintf "{ %s }" (String.concat ~sep:", " binds)
 
   type store = (Loc.t, value Array.t, Loc.comparator_witness) Map.t
 
   let store_to_string s = "{ TODO }"
 
-  type state = { e : env ; s : store }
-
-  let empty = { e = Map.empty (module Var) ; s = Map.empty (module Loc) }
+  let store_empty = Map.empty (module Loc)
 
   let denote_lit d l =
     match d with
@@ -143,8 +145,31 @@ struct
        | [ l ; r ] -> denote_and l r
        | _         -> failwith "Impossible, forbidden by lexer / parser.")
 
+  let denote_add l r =
+    match l.Value.datum with
+    | VInt nl ->
+      (match r.Value.datum with
+       | VInt nr -> Or_error.return (VInt { value = nl.value + nr.value ; label = Label.join nl.label nr.label ; region = Region.join nl.region nr.region })
+       | _ ->
+         let msg =
+           Printf.sprintf "Attempted to add (+) non-integer, %s [RHS]."
+             (value_to_string r)
+         in
+         Or_error.error_string msg)
+    | _ ->
+      let msg =
+        Printf.sprintf "Attempted to add (+) non-integer, %s [LHS]."
+          (value_to_string l)
+      in
+      Or_error.error_string msg
+
   let denote_aop op args =
-    failwith "TODO -- there are many ops and they are so so boring."
+    match op with
+    | Arith.Op.Add ->
+      (match args with
+       | [ l ; r ] -> denote_add l r
+       | _         -> failwith "Impossible, forbidden by lexer / parser.")
+    | _ -> failwith "TODO -- there are many ops and they are so so boring."
 
   let denote_arel rel args =
     failwith "TODO"
@@ -345,96 +370,94 @@ struct
   let denote_print v =
     Printf.printf "%s\n" (value_to_string v)
 
-  let reduce c { e ; s } =
+  let reduce c e s =
     let tag x = Or_error.tag ~tag:(Section.to_string c.source_location) x in
     let open Or_error.Let_syntax in
     match c.datum with
-    | ELit l -> Or_error.return ({ c with datum = EVal (denote_lit l.datum l.label) }, { e ; s })
-    | EFlip r -> Or_error.return ({ c with datum = EVal (denote_flip r) }, { e  ; s })
-    | ERnd r -> Or_error.return ({ c with datum = EVal (denote_rnd r) }, { e ; s })
+    | ELit l -> Or_error.return ({ c with datum = EVal (denote_lit l.datum l.label) }, e, s)
+    | EFlip r -> Or_error.return ({ c with datum = EVal (denote_flip r) }, e, s)
+    | ERnd r -> Or_error.return ({ c with datum = EVal (denote_rnd r) }, e, s)
     | EVar (x :: acs) ->
       let r = denote_var x acs e in
       let%bind v = tag r in
-      Or_error.return ({ c with datum = EVal v }, { e ; s })
+      Or_error.return ({ c with datum = EVal v }, e, s)
     | EBOp bo ->
       let vargs = Runtime.to_values bo.args in
       let r = denote_bop bo.op vargs in
       let%bind v = tag r in
-      Or_error.return ({ c with datum = EVal v }, { e ; s })
+      Or_error.return ({ c with datum = EVal v }, e, s)
     | EAOp ao ->
       let vargs = Runtime.to_values ao.args in
       let r = denote_aop ao.op vargs in
       let%bind v = tag r in
-      Or_error.return ({ c with datum = EVal v }, { e ; s })
+      Or_error.return ({ c with datum = EVal v }, e, s)
     | EARel ar ->
       let vargs = Runtime.to_values ar.args in
       let r = denote_arel ar.rel vargs in
       let%bind v = tag r in
-      Or_error.return ({ c with datum = EVal v }, { e ; s })
+      Or_error.return ({ c with datum = EVal v }, e, s)
     | ETuple (l, r) ->
       let vl = Runtime.to_value l in
       let vr = Runtime.to_value r in
-      Or_error.return ({ c with datum = EVal (VTuple (vl.datum, vr.datum)) }, { e ; s })
+      Or_error.return ({ c with datum = EVal (VTuple (vl.datum, vr.datum)) }, e, s)
     | ERecord fields ->
       let vfields = List.map ~f:(fun (x, e) -> (x, (Runtime.to_value e).datum)) fields in
-      Or_error.return ({ c with datum = EVal (VRecord vfields) }, { e ; s })
+      Or_error.return ({ c with datum = EVal (VRecord vfields) }, e, s)
     | EArrInit ai ->
       let vsz = Runtime.to_value ai.size in
       let r = denote_arrinit vsz ai.init s in
       let%bind (c', s') = tag r in
-      Or_error.return ({ c with datum = c' }, { e ; s = s' })
+      Or_error.return ({ c with datum = c' }, e, s')
     | EArrFill af -> failwith "Come back after implementing application"
     | EArrRead ar ->
       let vloc, vidx = Runtime.to_value ar.loc, Runtime.to_value ar.idx in
       let r = denote_arrread vloc vidx s in
       let%bind v = tag r in
-      Or_error.return ({ c with datum = EVal v }, { e ; s })
+      Or_error.return ({ c with datum = EVal v }, e, s)
     | EArrWrite aw ->
       let vloc, vidx, v = Runtime.to_value aw.loc, Runtime.to_value aw.idx, Runtime.to_value aw.value in
       let r = denote_arrwrite vloc vidx v s in
       let%bind v = tag r in
-      Or_error.return ({ c with datum = EVal v }, { e ; s })
+      Or_error.return ({ c with datum = EVal v }, e, s)
     | EArrLen l ->
       let vloc = Runtime.to_value l in
       let r = denote_arrlen vloc s in
       let%bind v = tag r in
-      Or_error.return ({ c with datum = EVal v }, { e ; s })
+      Or_error.return ({ c with datum = EVal v }, e, s)
     | ECast cast ->
       let r = denote_cast cast.var cast.label e in
       let%bind v = tag r in
-      Or_error.return ({ c with datum = EVal v }, { e ; s })
+      Or_error.return ({ c with datum = EVal v }, e, s)
     | EMux m ->
       let vguard, vlhs, vrhs = Runtime.to_value m.guard, Runtime.to_value m.lhs, Runtime.to_value m.rhs in
       let r = denote_mux vguard vlhs vrhs in
       let%bind v = tag r in
-      Or_error.return ({ c with datum = EVal v }, { e ; s })
-    | EAbs f -> Or_error.return ({ c with datum = EVal (VAbs { env = e ; pat = f.pat ; body = f.body }) }, { e ; s })
+      Or_error.return ({ c with datum = EVal v }, e, s)
+    | EAbs f -> Or_error.return ({ c with datum = EVal (VAbs { env = e ; pat = f.pat ; body = f.body }) }, e, s)
     | ERec f ->
       let bogus = ref VUnit in
       let lam = VAbs { env = Map.set e ~key:f.name ~data:bogus ; pat = f.pat ; body = f.body } in
       bogus := lam;
-      Or_error.return ({ c with datum = EVal lam }, { e ; s })
+      Or_error.return ({ c with datum = EVal lam }, e, s)
     | EApp ap ->
       let vlam, varg = Runtime.to_value ap.lam, Runtime.to_value ap.arg in
       let r = denote_apply vlam varg e in
       let%bind (c', e') = tag r in
-      Or_error.return (c', { e = e' ; s })
+      Or_error.return (c', e', s)
     | ELet l ->
       let v = Runtime.to_value l.value in
       let%bind e' = tag (bind_map l.pat v.Value.datum) in
-      Or_error.return (l.body, { e = merge e e' ; s })
+      Or_error.return (l.body, merge e e', s)
     | EIf ite ->
       let vguard = Runtime.to_value ite.guard in
       let%bind c' = tag (denote_ite vguard ite.thenb ite.elseb) in
-      Or_error.return (c', { e ; s })
+      Or_error.return (c', e, s)
     | EPrint t ->
       let v = Runtime.to_value t in
       (denote_print v;
-       Or_error.return ({ c with datum = EVal VUnit }, { e ; s }))
+       Or_error.return ({ c with datum = EVal VUnit }, e, s))
     | EVar [] -> failwith "Impossible, forbidden by parser."
     | EVal _  -> failwith "Impossible, forbidden by evaluator."
-
-
 end
 
 include Eval.Make(Reduction)

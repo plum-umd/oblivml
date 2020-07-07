@@ -4,6 +4,7 @@
 
   open Parsing
 
+  open SyntaxError
   open Source
 
   (** Annotate an AST node with positions in source. *)
