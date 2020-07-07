@@ -1,5 +1,6 @@
 (library
   (name oblivml)
+  (public_name oblivml)
   (libraries core stdio)
   (preprocess (pps ppx_jane)))
 

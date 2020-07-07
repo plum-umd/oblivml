@@ -1,0 +1,13 @@
+opam-version: "2.0"
+maintainer: "ins@cs.umd.edu"
+authors: "Ian Sweet"
+depends: [
+  "ocaml" {= "4.08.1"}
+  "dune" {build}
+]
+build: [
+  ["dune" "subst"] {pinned}
+  ["dune" "build" "-p" name "-j" jobs]
+  ["dune" "runtest" "-p" name "-j" jobs] {with-test}
+]
+synopsis: "OblivML: A Language for Probabilistically Oblivious Computation."
