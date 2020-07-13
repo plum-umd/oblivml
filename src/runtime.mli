@@ -17,7 +17,7 @@ and 'v t' =
   | ETuple    of ('v t, 'v t) Tuple.T2.t
   | ERecord   of (Var.t * 'v t) List.t
   | EArrInit  of { size : 'v t ; init : 'v t }
-  | EArrFill  of { loc : Loc.t ; idx : Int.t ; init : 'v t }
+  | EArrFill  of { size : 'v Value.t ; init : 'v t ; acc : ('v Value.t) List.t ; curr : 'v t }
   | EArrRead  of { loc : 'v t ; idx : 'v t }
   | EArrWrite of { loc : 'v t ; idx : 'v t ; value : 'v t }
   | EArrLen   of 'v t

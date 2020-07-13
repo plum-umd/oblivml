@@ -6,6 +6,8 @@ type t =
   ; r_pos : Lexing.position
   }
 
+val empty : t
+
 val to_string : t -> String.t
 
 val pp : Format.formatter -> t -> unit

@@ -1,0 +1,324 @@
+(** Oblivious Stacks *)
+
+(***********************
+ ** Utility Functions **
+ ***********************)
+
+let rec div_2 (n : int) : int =
+  if n = 0 then
+    0
+  else
+    div_2 (n - 2) + 1
+in
+
+let rec log_2 (n : int) : int =
+  if n = 1 then
+    0
+  else
+    log_2 (div_2 n) + 1
+in
+
+let rec pow_2 (n : int) : int =
+  if n = 0 then
+    1
+  else
+    2 * (pow_2 (n - 1))
+in
+
+(***********************
+ ** Type Declarations **
+ ***********************)
+
+(** Data user is storing *)
+type user_data = int<`r0>
+in
+
+(** Data the OStack is storing *)
+type ostack_data =
+  { is_some    : bool<`r0>
+  ; ostack_tag : rint<`r0>
+  ; ostack_val : user_data
+  }
+in
+
+(** Data the NRORAM is storing *)
+type nr_data =
+  { is_some : bool<`r0>
+  ; nr_tag  : int<`r0>
+  ; nr_val  : ostack_data
+  }
+in
+
+(** Blocks in the trivial ORAM *)
+type block =
+  { is_some : bool<`r0>
+  ; idx     : int<`r0>
+  ; data    : nr_data
+  }
+in
+
+type trivial_oram = block array
+in
+
+type nr_oram = trivial_oram array
+in
+
+type ostack =
+  { oram  : nr_oram
+  ; idx_r : int<secret> array
+  ; tag_r : rint<`r0> array
+  }
+in
+
+(********************
+ ** Default Values **
+ ********************)
+
+let default_user_data =
+  0
+in
+
+let default_ostack_data (x : unit) =
+  { is_some    = false
+  ; ostack_tag = rnd<`r0>
+  ; ostack_val = default_user_data
+  }
+in
+
+let default_nr_data (x : unit) =
+  { is_some = false
+  ; nr_tag  = 0
+  ; nr_val  = default_ostack_data ()
+  }
+in
+
+let default_block (x : unit) =
+  { is_some = false
+  ; idx     = 0
+  ; data    = default_nr_data ()
+  }
+in
+
+(******************
+ ** Trivial ORAM **
+ ******************)
+
+let trivial_init (size : int) =
+  array(size)[fun (_ : int) . default_block ()]
+in
+
+let trivial_rr' (toram : trivial_oram) (idx : int<secret>) =
+  let len = length(toram) in
+  let rec iterate (i : int) (acc : block) : block =
+    if i = len then
+      acc
+    else
+      let curr = toram[i] <- default_block () in
+      let swap = not acc.is_some && idx = curr.idx in
+      let (l, r) = mux(swap, curr, acc) in
+      let _ = toram[i] <- r in
+      iterate (i + 1) l
+  in
+  iterate 0 (default_block ())
+in
+
+let trivial_rr (toram : trivial_oram) (idx : int<secret>) =
+  let result = trivial_rr' toram idx in
+  result.data
+in
+
+let trivial_add' (toram : trivial_oram) (blk : block) =
+  let len = length(toram) in
+  let rec iterate (i : int) (acc : block) : unit =
+    if i = len then
+      ()
+    else
+      let curr = toram[i] <- default_block () in
+      let swap = not curr.is_some in
+      let (l, r) = mux(swap, curr, acc) in
+      let _ = toram[i] <- r in
+      iterate (i + 1) l
+  in
+  iterate 0 blk
+in
+
+let trivial_add (toram : trivial_oram) (idx : int<`r0>) (data : nr_data) =
+  trivial_add' toram { is_some = true
+                     ; idx     = idx
+                     ; data    = data
+                     }
+in
+
+let trivial_pop' (toram : trivial_oram) =
+  let len = length(toram) in
+  let rec iterate (i : int) (acc : block) : block =
+    if i = len then
+      acc
+    else
+      let curr = toram[i] <- default_block () in
+      let swap = not acc.is_some && curr.is_some in
+      let (l, r) = mux(swap, curr, acc) in
+      let _ = toram[i] <- r in
+      iterate (i + 1) l
+  in
+  iterate 0 (default_block ())
+
+in
+
+(************************
+ ** NON-RECURSIVE ORAM **
+ ************************)
+
+(** ASSUMPTION:
+      Size of the NR ORAM is exactly 2^k - 1, k >= 2.
+
+      This ensures that the tree is full and has at least depth 2. *)
+
+let nr_init (size : int) (bucket_size1 : int) =
+  array(size)[fun (_ : int) . trivial_init bucket_size1]
+in
+
+let nr_rr' (nroram : nr_oram) (idx : int<secret>) (tag : int) =
+  let len = length(nroram) in
+  let depth = log_2 (len + 1) in
+  let rec iterate (level : int) (acc : nr_data) : nr_data =
+    if level = depth then
+      acc
+    else
+      let base = (pow_2 level) - 1 in
+      let bucket_loc = base + (tag & base) in
+      let bucket = nroram[bucket_loc] in
+      let res = trivial_rr bucket idx in
+
+      let pass = res.is_some in
+      let (ret, _) = mux(pass, res, acc) in
+      iterate (level + 1) ret
+  in
+  iterate 0 (default_nr_data ())
+in
+
+let nr_rr (nroram : nr_oram) (idx : int<secret>) (tag : int) =
+  let ret = nr_rr' nroram idx tag in
+  ret.nr_val
+in
+
+let nr_evict' (nroram : nr_oram) (level : int) (loc : int) =
+  let mask = pow_2 level in
+
+  let bucket = nroram[loc] in
+  let popped = trivial_pop' bucket in
+  let default = default_block () in
+
+  let left = (popped.data.nr_tag & mask) = 0 in
+
+  (* Basically need to claim that this mux is OK *)
+  let (l, r) = mux(left, popped, default) in
+
+  let left_child  = nroram[(2 * loc) + 1] in
+  let right_child = nroram[(2 * loc) + 2] in
+
+  let _ = trivial_add' left_child l in
+  trivial_add' right_child r
+in
+
+let nr_evict (nroram : nr_oram) =
+  let len = length(nroram) in
+  let depth = log_2 (len + 1) in
+  let rec iterate (level : int) : unit =
+    if level = depth - 1 then
+      ()
+    else
+      let mask = pow_2 level in
+      let base = (pow_2 level) - 1 in
+
+      (* Two evictions per-level *)
+      let r1 = rnd<`r0> in
+      let loc1 = base + (reveal(r1) & base) in
+      let _ = nr_evict' nroram level loc1 in
+
+      let r2 = rnd<`r0> in
+      let loc2 = base + (reveal(r2) & base) in
+      let _ = nr_evict' nroram level loc2 in
+
+      iterate (level + 1)
+  in
+  iterate 0
+in
+
+let nr_add' (nroram : nr_oram) (blk : block) =
+  let bucket = nroram[0] in
+  let _ = trivial_add' bucket blk in
+  nr_evict nroram
+in
+
+let nr_add (nroram : nr_oram) (idx : int<`r0>) (tag : int<`r0>) (data : ostack_data) =
+  nr_add' nroram { is_some = true
+                 ; idx     = idx
+                 ; data    = { is_some = true
+                             ; nr_tag  = tag
+                             ; nr_val  = data
+                             }
+                 }
+in
+
+(*************
+ ** OSTACKS **
+ *************)
+
+let ostack_init (size : int) (bucket_size : int) =
+  { oram  = nr_init size bucket_size
+  ; idx_r = array(1)[fun (_ : int) . 0]
+  ; tag_r = array(1)[fun (_ : int) . rnd<`r0>]
+  }
+in
+
+let stackop (ostack : ostack) (ispush : bool<secret>) (data : user_data) =
+  let nroram = ostack.oram in
+  let idx = ostack.idx_r[0] in
+  let tag = ostack.tag_r[0] <- rnd<`r0> in
+
+  let (rr_idx, _) = mux(ispush, -1, idx) in
+  let (rr_tag, add_tag) = mux(ispush, rnd<`r0>, tag) in
+  let res = nr_rr nroram rr_idx reveal(rr_tag) in
+
+  let (idx', _) = mux(ispush, idx + 1, idx - 1) in
+  let fresh = rnd<`r0> in
+  let (tag', _) = mux(ispush, fresh, res.ostack_tag) in
+
+  let cand = { is_some = true
+             ; idx     = idx'
+             ; data    = { is_some = true
+                         ; nr_tag  = use(tag')
+                         ; nr_val  = { is_some    = true
+                                     ; ostack_tag = add_tag
+                                     ; ostack_val = data
+                                     }
+                         }
+             } in
+
+  let default = default_block () in
+
+  let (add, _) = mux(ispush, cand, default) in
+
+  let _ = nr_add' nroram add in
+
+  let _ = ostack.idx_r[0] <- idx' in
+  let _ = ostack.tag_r[0] <- tag' in
+
+  res.ostack_val
+in
+
+(***********
+ ** TESTS **
+ ***********)
+
+let basic (_ : unit) =
+  let ostack = ostack_init 7 2 in
+  let _ = stackop ostack true 10 in
+  let _ = stackop ostack true 20 in
+  let twenty = stackop ostack false -1 in
+  let ten = stackop ostack false -1 in
+  (twenty, ten)
+in
+
+basic ()

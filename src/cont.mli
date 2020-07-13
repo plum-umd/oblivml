@@ -10,6 +10,7 @@ type 'v frame' =
   | KRecord      of { evaluated : (Var.t * 'v Value.t) List.t ; x : Var.t ; remaining : (Var.t * 'v Runtime.t) List.t }
   | KArrInitSz   of 'v Runtime.t
   | KArrInitInit of 'v Value.t
+  | KArrFill     of { size : 'v Value.t ; init : 'v Runtime.t ; acc : ('v Value.t) List.t }
   | KArrReadLoc  of 'v Runtime.t
   | KArrReadIdx  of 'v Value.t
   | KArrWriteLoc of { idx : 'v Runtime.t ; value : 'v Runtime.t }

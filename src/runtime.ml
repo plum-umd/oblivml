@@ -17,7 +17,7 @@ and 'v t' =
   | ETuple    of ('v t, 'v t) Tuple.T2.t
   | ERecord   of (Var.t * 'v t) List.t
   | EArrInit  of { size : 'v t ; init : 'v t }
-  | EArrFill  of { loc : Loc.t ; idx : Int.t ; init : 'v t }
+  | EArrFill  of { size : 'v Value.t ; init : 'v t ; acc : ('v Value.t) List.t ; curr : 'v t }
   | EArrRead  of { loc : 'v t ; idx : 'v t }
   | EArrWrite of { loc : 'v t ; idx : 'v t ; value : 'v t }
   | EArrLen   of 'v t
@@ -50,6 +50,7 @@ let is_redex_datum (c : 'v t') : Bool.t =
   | ETuple (e1, e2) -> is_value e1 && is_value e2
   | ERecord fields  -> List.for_all fields ~f:(Fn.compose is_value Tuple.T2.get2)
   | EArrInit ai     -> is_value ai.size && is_value ai.init
+  | EArrFill af     -> is_value af.curr
   | EArrRead ar     -> is_value ar.loc && is_value ar.idx
   | EArrWrite aw    -> is_value aw.loc && is_value aw.idx && is_value aw.value
   | EArrLen loc     -> is_value loc
@@ -86,7 +87,7 @@ let rec of_source_datum (s : Source.t') : 'v t' =
   | EARel ar        -> EARel { rel = ar.rel ; args = List.map ~f:of_source ar.args }
   | ETuple (e1, e2) -> ETuple (of_source e1, of_source e2)
   | ERecord fields  -> ERecord (List.map ~f:(fun (x, e) -> (x, of_source e)) fields)
-  | EArrInit ai     -> EArrInit { size = of_source ai.size ; init = of_source ai.size }
+  | EArrInit ai     -> EArrInit { size = of_source ai.size ; init = of_source ai.init }
   | EArrRead ar     -> EArrRead { loc = of_source ar.loc ; idx = of_source ar.idx }
   | EArrWrite aw    -> EArrWrite { loc = of_source aw.loc ; idx = of_source aw.idx ; value = of_source aw.value }
   | EArrLen loc     -> EArrLen (of_source loc)

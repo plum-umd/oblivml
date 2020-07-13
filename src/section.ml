@@ -6,6 +6,11 @@ type t =
   ; r_pos : Position.t
   }
 
+let empty =
+  { l_pos = Position.empty
+  ; r_pos = Position.empty
+  }
+
 let to_string s =
   Printf.sprintf
     "%s - %s"

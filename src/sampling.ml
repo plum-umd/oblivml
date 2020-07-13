@@ -23,7 +23,7 @@ struct
     | VTuple  of (value, value) Tuple.T2.t
     | VRecord of (Var.t * value) list
 
-  let value_to_string' = function
+  let rec value_to_string' = function
     | VUnit -> "()"
     | VBool b ->
       Printf.sprintf "Bool(%s<%s,%s>)"
@@ -43,9 +43,13 @@ struct
       Printf.sprintf "Rnd(%s<%s>)"
         (Int.to_string r.value)
         (Region.to_string r.region)
+    | VTuple (v1, v2) ->
+      Printf.sprintf "(%s, %s)"
+        (value_to_string' v1)
+        (value_to_string' v2)
     | _ -> failwith "Unimplemented"
 
-  let value_to_string v = Value.to_string v value_to_string'
+  and value_to_string v = Value.to_string v value_to_string'
 
   type env = (Var.t, value Ref.t, Var.comparator_witness) Map.t
 
@@ -145,48 +149,102 @@ struct
        | [ l ; r ] -> denote_and l r
        | _         -> failwith "Impossible, forbidden by lexer / parser.")
 
-  let denote_add l r =
+  let denote_aop_bin op l r =
+    let op, op_str =
+      match op with
+      | Arith.Op.Add -> ( + ), "add (+)"
+      | Arith.Op.Subtract -> ( - ), "subtract (-)"
+      | Arith.Op.Mult -> ( * ), "multiply (*)"
+      | Arith.Op.And -> ( land ), "AND (&)"
+      | _ -> failwith "Impossible, forbidden by lexer / parser."
+    in
     match l.Value.datum with
     | VInt nl ->
       (match r.Value.datum with
-       | VInt nr -> Or_error.return (VInt { value = nl.value + nr.value ; label = Label.join nl.label nr.label ; region = Region.join nl.region nr.region })
+       | VInt nr -> Or_error.return (VInt { value = op nl.value nr.value ; label = Label.join nl.label nr.label ; region = Region.join nl.region nr.region })
        | _ ->
          let msg =
-           Printf.sprintf "Attempted to add (+) non-integer, %s [RHS]."
+           Printf.sprintf "Attempted to %s non-integer, %s [RHS]."
+             op_str
              (value_to_string r)
          in
          Or_error.error_string msg)
     | _ ->
       let msg =
-        Printf.sprintf "Attempted to add (+) non-integer, %s [LHS]."
+        Printf.sprintf "Attempted to %s non-integer, %s [LHS]."
+          op_str
           (value_to_string l)
       in
       Or_error.error_string msg
 
   let denote_aop op args =
-    match op with
-    | Arith.Op.Add ->
-      (match args with
-       | [ l ; r ] -> denote_add l r
-       | _         -> failwith "Impossible, forbidden by lexer / parser.")
-    | _ -> failwith "TODO -- there are many ops and they are so so boring."
+    (match args with
+     | [ l ; r ] -> denote_aop_bin op l r
+     | _ -> failwith "Impossible, forbidden by lexer / parser.")
 
-  let denote_arel rel args =
-    failwith "TODO"
-
-  let denote_arrinit vsz init s =
-    match vsz.Value.datum with
-    | VInt n ->
-      let l  = Loc.fresh () in
-      let c' = Runtime.EArrFill { loc = l ; idx = 0 ; init = init } in
-      let s' = Map.add_exn ~key:l ~data:(Array.create ~len:n.value VUnit) s in
-      Or_error.return (c', s')
+  let denote_eq l r =
+    match l.Value.datum with
+    | VInt nl ->
+      (match r.Value.datum with
+       | VInt nr -> Or_error.return (VBool { value = nl.value = nr.value ; label = Label.join nl.label nr.label ; region = Region.join nl.region nr.region })
+       | _ ->
+         let msg =
+           Printf.sprintf "Attempted to compare equality (=) non-integer, %s [RHS]."
+             (value_to_string r)
+         in
+         Or_error.error_string msg)
     | _ ->
       let msg =
-        Printf.sprintf "Type Error: Array of size %s."
+        Printf.sprintf "Attempted to compare equality (=) non-integer, %s [LHS]."
+          (value_to_string l)
+      in
+      Or_error.error_string msg
+
+  let denote_arel rel args =
+    match rel with
+    | Arith.Rel.Equal ->
+      (match args with
+       | [ l ; r ] -> denote_eq l r
+       | _         -> failwith "Impossible, forbiddenby lexer / parser.")
+
+  let denote_arrinit vsz init =
+    match vsz.Value.datum with
+    | VInt sz ->
+      if sz.value < 0 then
+        let msg =
+          Printf.sprintf "Array size cannot be negative (given %s)."
+            (value_to_string vsz)
+        in
+        Or_error.error_string msg
+      else
+        let zero = { source_location = Section.empty ; datum = Runtime.EVal (VInt { value = 0 ; label = Label.public ; region = Region.bottom }) } in
+        let curr = { source_location = Section.empty ; datum = Runtime.EApp { lam = init ; arg = zero } } in
+        let c' = Runtime.EArrFill { size = vsz ; init = init ; acc = [] ; curr = curr } in
+        Or_error.return c'
+    | _ ->
+      let msg =
+        Printf.sprintf "Array size must be a number (given %s)."
           (value_to_string vsz)
       in
       Or_error.error_string msg
+
+  let denote_arrfill vsz init acc curr s =
+    let len = List.length acc in
+    let v = Runtime.to_value curr in
+    let acc' = v :: acc in
+    match vsz.Value.datum with
+    | VInt sz ->
+      if sz.value <= len + 1 then
+        let l = Loc.fresh () in
+        let r = Runtime.EVal (VLoc l) in
+        let s' = Map.add_exn ~key:l ~data:(Array.of_list (List.map ~f:(fun v -> v.datum) (List.rev acc'))) s in
+        Or_error.return (r, s')
+      else
+        let n = { source_location = Section.empty ; datum = Runtime.EVal (VInt { value = sz.value + 1 ; label = Label.public ; region = Region.bottom }) } in
+        let curr = { source_location = Section.empty ; datum = Runtime.EApp { lam = init ; arg = n } } in
+        let r = Runtime.EArrFill { size = vsz ; init = init ; acc = acc' ; curr = curr } in
+        Or_error.return (r, s)
+    | _ -> failwith "Impossible, would have been caught be array initialization term."
 
   let denote_arrread vloc vidx s =
     match vloc.Value.datum, vidx.Value.datum with
@@ -405,10 +463,13 @@ struct
       Or_error.return ({ c with datum = EVal (VRecord vfields) }, e, s)
     | EArrInit ai ->
       let vsz = Runtime.to_value ai.size in
-      let r = denote_arrinit vsz ai.init s in
+      let r = denote_arrinit vsz ai.init in
+      let%bind c' = tag r in
+      Or_error.return ({ c with datum = c' }, e, s)
+    | EArrFill af ->
+      let r = denote_arrfill af.size af.init af.acc af.curr s in
       let%bind (c', s') = tag r in
       Or_error.return ({ c with datum = c' }, e, s')
-    | EArrFill af -> failwith "Come back after implementing application"
     | EArrRead ar ->
       let vloc, vidx = Runtime.to_value ar.loc, Runtime.to_value ar.idx in
       let r = denote_arrread vloc vidx s in

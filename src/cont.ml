@@ -9,6 +9,7 @@ type 'v frame' =
   | KRecord      of { evaluated : (Var.t * 'v Value.t) List.t ; x : Var.t ; remaining : (Var.t * 'v Runtime.t) List.t }
   | KArrInitSz   of 'v Runtime.t
   | KArrInitInit of 'v Value.t
+  | KArrFill     of { size : 'v Value.t ; init : 'v Runtime.t ; acc : ('v Value.t) List.t }
   | KArrReadLoc  of 'v Runtime.t
   | KArrReadIdx  of 'v Value.t
   | KArrWriteLoc of { idx : 'v Runtime.t ; value : 'v Runtime.t }
@@ -72,6 +73,7 @@ let decompose (c : 'v Runtime.t') : ('v Runtime.t * 'v frame') =
       (ai.init, KArrInitInit vsize)
     else
       (ai.size, KArrInitSz ai.init)
+  | EArrFill af -> (af.curr, KArrFill { size = af.size ; init = af.init ; acc = af.acc })
   | EArrRead ar ->
     if Runtime.is_value ar.loc then
       let vloc = Runtime.to_value ar.loc in
@@ -145,6 +147,7 @@ let compose (c : 'v Runtime.t) (kf : 'v frame') : 'v Runtime.t' =
     EArrInit { size = c ; init = init }
   | KArrInitInit sz ->
     EArrInit { size = Runtime.of_value sz ; init = c }
+  | KArrFill af -> EArrFill { size = af.size ; init = af.init ; acc = af.acc ; curr = c }
   | KArrReadLoc idx ->
     EArrRead { loc = c ; idx = idx }
   | KArrReadIdx loc ->
