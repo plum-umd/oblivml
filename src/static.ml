@@ -129,7 +129,7 @@ let rec mux_merge loc l_guard r_guard t1 t2 =
     if Kind.equal kind Kind.Affine && Type.Base.safe tb1 then
       if Region.lt r_guard r1 && Region.lt r_guard r2 then
         let l' = Label.secret in
-        let r' = Region.join r1 r2 in
+        let r' = Region.meet r1 r2 in
         (* Printf.printf "%s @ %s\n" (Region.to_string r') (option_to_string loc Section.to_string); *)
         Type.TBase (tb1, l', r')
       else
@@ -180,20 +180,12 @@ let rec static (tenv : env_t) (talias : alias_t) (e : Expr.t) : Type.t * env_t =
     (t_lit, tenv)
 
   | Expr.EFlip f ->
-    if Region.equiv f.region Region.bottom then
-      let msg = "Region annotation cannot be bottom." in
-      raise (TypeError (e.loc, msg))
-    else
-      let t_flip = Type.TBase (Type.Base.TBRBool, f.label, f.region) in
-      (t_flip, tenv)
+    let t_flip = Type.TBase (Type.Base.TBRBool, f.label, f.region) in
+    (t_flip, tenv)
 
   | Expr.ERnd r ->
-    if Region.equiv r.region Region.bottom then
-      let msg = "Region annotation cannot be bottom." in
-      raise (TypeError (e.loc, msg))
-    else
-      let t_rnd = Type.TBase (Type.Base.TBRInt, r.label, r.region) in
-      (t_rnd, tenv)
+    let t_rnd = Type.TBase (Type.Base.TBRInt, r.label, r.region) in
+    (t_rnd, tenv)
 
   | Expr.EVar var ->
     (match env_consume var.path tenv with

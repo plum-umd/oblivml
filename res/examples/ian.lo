@@ -1,0 +1,7 @@
+let (a, b) = (flip<secret, `r0>, flip<secret, `r0 \/ `r1>) in
+let (c, d) = (flip<secret, `r0 \/ `r1>, flip<secret, `r0 \/ `r1>) in
+let as = use(a) in
+let (ah, _) = mux(true<secret, _|_>, a, b) in
+let (bad, _) = mux(as, ah, c) in
+let s = true<secret, _|_> in
+mux(s, bad, d)
